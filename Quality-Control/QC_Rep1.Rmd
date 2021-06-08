@@ -37,7 +37,7 @@ use_python("/usr/bin/python3")
 theme_set(theme_classic())
 ```
 
-This dataset was generated from the sequencing of two 10X V3 libraries run in parallel from the same tissue dissociation prep 
+This dataset was generated from the sequencing of two 10X V3 libraries run in parallel from the same tissue dissociation prep
 
 # Process the first library
 
@@ -56,7 +56,6 @@ Raw.data@meta.data$Barcodes <- rownames(Raw.data@meta.data)
 dim(Raw.data@data)
 ```
 
-
 ## Compute mito and ribo gene content per cell
 
 ```{r}
@@ -74,6 +73,7 @@ rm(mito.genes, percent.mito,ribo.genes,percent.ribo)
 ```{r fig.dim=c(5, 4)}
 VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
 ```
+
 ## Inspect cell based on relation between nUMI and nGene detected
 
 ```{r fig.dim=c(6, 3.5)}
@@ -89,6 +89,7 @@ p2 <- ggMarginal(p2, type = "histogram", fill="lightgrey")
 
 plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(1, 1)) ; rm(p1,p2)
 ```
+
 Cells with deviating nGene/nUMI ratio display an [Erythrocyte signature](http://mousebrain.org/development/celltypes.html)
 
 ```{r}
@@ -119,7 +120,8 @@ p1 <- ggplot(Cell.QC.Stat, aes(x= log10(nUMI), y= log10(nGene))) +
 p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
 p1
 ```
-## Low quality cell filtering 
+
+## Low quality cell filtering
 
 ### Filtering cells based on percentage of mitochondrial transcripts
 
@@ -173,6 +175,7 @@ p1 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
 
 ggMarginal(p1, type = "histogram", fill="lightgrey")
 ```
+
 ```{r}
 # Filter cells base on both metrics
 Cell.QC.Stat <- Cell.QC.Stat %>% filter(log10(nGene) > min.Genes.thr) %>% filter(log10(nUMI) < max.nUMI.thr)
@@ -211,6 +214,7 @@ p3 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
 
 ggMarginal(p3, type = "histogram", fill="lightgrey")
 ```
+
 ```{r}
 # Remove invalid cells
 Cell.QC.Stat <- Cell.QC.Stat %>% filter(valideCells)
@@ -222,12 +226,10 @@ Cell.QC.Stat <- Cell.QC.Stat %>% filter(valideCells)
 Raw.data <- SubsetData(Raw.data, cells.use = Cell.QC.Stat$Barcodes , subset.raw = T,  do.clean = F)
 ```
 
-
 ```{r fig.dim=c(4, 4)}
 # Plot final QC metrics
 VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
 ```
-
 
 ```{r fig.dim=c(4, 4)}
 p1 <- ggplot(Raw.data@meta.data, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
@@ -243,6 +245,7 @@ rm(list = ls()[!ls() %in% "Raw.data"])
 ### Run Scrublet with default parameter
 
 Export raw count matrix as input to Scrublet
+
 ```{r message=FALSE, warning=FALSE}
 #Export filtered matrix
 dir.create("../../Scrublet_inputs")
@@ -292,6 +295,7 @@ ggplot(Raw.data@meta.data, aes(x = Doubletscore, stat(ndensity))) +
 Raw.data@meta.data$Predicted_doublets <- ifelse(py$doublet_scores > 0.2, "Doublet","Singlet" )
 table(Raw.data@meta.data$Predicted_doublets)
 ```
+
 ### Filter doublets
 
 ```{r}
@@ -304,7 +308,6 @@ QC.data.1 <- SubsetData(Raw.data,  cells.use = Valid.Cells, subset.raw = T, do.c
 ```{r}
 rm(list = ls()[!ls() %in% "QC.data.1"])
 ```
-
 
 # Process the second library
 
@@ -322,6 +325,7 @@ Raw.data@meta.data$Barcodes <- rownames(Raw.data@meta.data)
 
 dim(Raw.data@data)
 ```
+
 ## Compute mito and ribo gene content per cell
 
 ```{r}
@@ -339,7 +343,6 @@ rm(mito.genes, percent.mito,ribo.genes,percent.ribo)
 ```{r fig.dim=c(5, 4)}
 VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
 ```
-
 
 ## Inspect cell based on relation between nUMI and nGene detected
 
@@ -388,7 +391,7 @@ p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
 p1
 ```
 
-## Low quality cell filtering 
+## Low quality cell filtering
 
 ### Filtering cells based on percentage of mitochondrial transcripts
 
@@ -442,6 +445,7 @@ p1 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
 
 ggMarginal(p1, type = "histogram", fill="lightgrey")
 ```
+
 ```{r}
 # Filter cells base on both metrics
 Cell.QC.Stat <- Cell.QC.Stat %>% filter(log10(nGene) > min.Genes.thr) %>% filter(log10(nUMI) < max.nUMI.thr)
@@ -480,6 +484,7 @@ p3 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
 
 ggMarginal(p3, type = "histogram", fill="lightgrey")
 ```
+
 ```{r}
 # Remove invalid cells
 Cell.QC.Stat <- Cell.QC.Stat %>% filter(valideCells)
@@ -491,12 +496,10 @@ Cell.QC.Stat <- Cell.QC.Stat %>% filter(valideCells)
 Raw.data <- SubsetData(Raw.data, cells.use = Cell.QC.Stat$Barcodes , subset.raw = T,  do.clean = F)
 ```
 
-
 ```{r fig.dim=c(4, 4)}
 # Plot final QC metrics
 VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
 ```
-
 
 ```{r fig.dim=c(4, 4)}
 p1 <- ggplot(Raw.data@meta.data, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
@@ -512,6 +515,7 @@ rm(list = ls()[!ls() %in% c("Raw.data", "QC.data.1")])
 ### Run Scrublet with default parameter
 
 Export raw count matrix as input to Scrublet
+
 ```{r message=FALSE, warning=FALSE}
 #Export filtered matrix
 exprData <- Matrix(as.matrix(Raw.data@raw.data), sparse = TRUE)
@@ -573,7 +577,6 @@ QC.data.2 <- SubsetData(Raw.data,  cells.use = Valid.Cells, subset.raw = T, do.c
 rm(list = ls()[!ls() %in% c("QC.data.1", "QC.data.2")])
 ```
 
-
 # Merge the two libraries
 
 ```{r}
@@ -582,6 +585,7 @@ Hem.data <- MergeSeurat(QC.data.1, QC.data.2,
                         add.cell.id1 = "Hem1",
                         add.cell.id2 = "Hem2")
 ```
+
 ```{r fig.dim=c(6, 3.5)}
 Cell.QC.Stat <- Hem.data@meta.data
 Cell.QC.Stat$Barcodes <- rownames(Cell.QC.Stat)
@@ -594,6 +598,7 @@ p2 <- ggMarginal(p2, type = "histogram", fill="lightgrey")
 
 plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(1, 1)) ; rm(p1,p2)
 ```
+
 ```{r}
 rm(list = ls()[!ls() %in% "Hem.data"])
 ```
@@ -633,19 +638,16 @@ Genelist <- row.names(Hem.data@raw.data)
 write.table(Genelist, "../../SpringCoordinates/Genelist.csv", sep="\t", col.names = F, row.names = F)
 ```
 
-
 Spring coordinates were generated using the online version of [SPRING](https://kleintools.hms.harvard.edu/tools/spring.html) with the following parameters :
 
-```
-Number of cells: 15333
-Number of genes that passed filter: 874
-Min expressing cells (gene filtering): 3
-Min number of UMIs (gene filtering): 3
-Gene variability %ile (gene filtering): 95
-Number of principal components: 20
-Number of nearest neighbors: 8
-Number of force layout iterations: 500
-```
+    Number of cells: 15333
+    Number of genes that passed filter: 874
+    Min expressing cells (gene filtering): 3
+    Min number of UMIs (gene filtering): 3
+    Gene variability %ile (gene filtering): 95
+    Number of principal components: 20
+    Number of nearest neighbors: 8
+    Number of force layout iterations: 500
 
 Import the new coordinates
 
@@ -662,7 +664,6 @@ Hem.data <- SetDimReduction(Hem.data,
 Hem.data@dr$spring@key <- "spring"
 colnames(Hem.data@dr$spring@cell.embeddings) <- paste0(GetDimReduction(object= Hem.data, reduction.type = "spring",slot = "key"), c(1,2))
 ```
-
 
 # Assign cell state scores
 
@@ -694,6 +695,7 @@ DimPlot(Hem.data,
 We assigned broad transcriptional cell state score based on known and manually curated marker genes
 
 ## Apical progenitors
+
 ```{r}
 APgenes <- c("Rgcc", "Sparc", "Hes5","Hes1", "Slc1a3",
              "Ddah1", "Ldha", "Hmga2","Sfrp1", "Id4",
@@ -809,7 +811,6 @@ for (i in 1:length(plot)){
 cowplot::plot_grid(plotlist = plot[1:14], ncol = 5)
 ```
 
-
 ## Late pallial neurons
 
 ```{r}
@@ -848,7 +849,6 @@ for (i in 1:length(plot)){
 cowplot::plot_grid(plotlist = plot[1:10], ncol = 5)
 ```
 
-
 ```{r fig.dim=c(6, 9)}
 FeaturePlot(object = Hem.data,
             features.plot = c("AP_signature1", "BP_signature1",
@@ -867,8 +867,8 @@ FeaturePlot(object = Hem.data,
 saveRDS(Hem.data, "../QC.filtered.cells.RDS")
 ```
 
-
 # Session Info
+
 ```{r}
 #date
 format(Sys.time(), "%d %B, %Y, %H,%M")
