@@ -9,7 +9,7 @@ output:
     df_print: tibble
     highlight: haddock
     theme: cosmo
-    css: "style.css"
+    css: "../style.css"
     toc: yes
     toc_depth: 5
     toc_float:
@@ -619,18 +619,18 @@ Hem.data<- NormalizeData(object = Hem.data,
 ## Generate SRING dimentionality reduction
 
 ```{r}
-dir.create("SpringCoordinates")
+dir.create("../../SpringCoordinates")
 ```
 
 ```{r}
 # Export raw expression matrix and gene list to regenerate a spring plot
 exprData <- Matrix(as.matrix(Hem.data@raw.data), sparse = TRUE)
-writeMM(exprData, "SpringCoordinates/ExprData.mtx")
+writeMM(exprData, "../../SpringCoordinates/ExprData.mtx")
 ```
 
 ```{r}
 Genelist <- row.names(Hem.data@raw.data)
-write.table(Genelist, "SpringCoordinates/Genelist.csv", sep="\t", col.names = F, row.names = F)
+write.table(Genelist, "../../SpringCoordinates/Genelist.csv", sep="\t", col.names = F, row.names = F)
 ```
 
 
@@ -651,7 +651,7 @@ Import the new coordinates
 
 ```{r}
 # Import Spring coordinates
-Coordinates <-read.table("~/Bureau/hem_spring.csv", sep=",", header = T)
+Coordinates <-read.table("../SpringCoordinates/hem_spring.csv", sep=",", header = T)
 rownames(Coordinates) <- colnames(Hem.data@data)
 
 Hem.data <- SetDimReduction(Hem.data,
@@ -860,6 +860,13 @@ FeaturePlot(object = Hem.data,
             dark.theme = F,
             no.axes = T)
 ```
+
+# Save Seurat object
+
+```{r}
+saveRDS(Hem.data, "../QC.filtered.cells.RDS")
+```
+
 
 # Session Info
 ```{r}
