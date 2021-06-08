@@ -1,0 +1,871 @@
+---
+title: "Cell quality control"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE)
+```
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(reticulate)
+library(wesanderson)
+use_python("/usr/bin/python3")
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+This dataset was generated from the sequencing of two 10X V3 libraries run in parallel from the same tissue dissociation prep 
+
+# Process the first library
+
+## Load the raw filtered matrix output from Cellranger
+
+```{r}
+Countdata <- Read10X(data.dir = "../../RawData/Hem_1_filtered_feature_bc_matrix/")
+
+Raw.data <- CreateSeuratObject(raw.data = Countdata,
+                              min.cells = 3,
+                              min.genes = 800,
+                              project = "Hem1") ; rm(Countdata)
+
+Raw.data@meta.data$Barcodes <- rownames(Raw.data@meta.data)
+
+dim(Raw.data@data)
+```
+
+
+## Compute mito and ribo gene content per cell
+
+```{r}
+mito.genes <- grep(pattern = "^mt-", x = rownames(x = Raw.data@data), value = TRUE)
+percent.mito <- Matrix::colSums(Raw.data@raw.data[mito.genes, ])/Matrix::colSums(Raw.data@raw.data)
+Raw.data <- AddMetaData(object = Raw.data, metadata = percent.mito, col.name = "percent.mito")
+
+ribo.genes <- grep(pattern = "(^Rpl|^Rps|^Mrp)", x = rownames(x = Raw.data@data), value = TRUE)
+percent.ribo <- Matrix::colSums(Raw.data@raw.data[ribo.genes, ])/Matrix::colSums(Raw.data@raw.data)
+Raw.data <- AddMetaData(object = Raw.data, metadata = percent.ribo, col.name = "percent.ribo")
+
+rm(mito.genes, percent.mito,ribo.genes,percent.ribo)
+```
+
+```{r fig.dim=c(5, 4)}
+VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
+```
+## Inspect cell based on relation between nUMI and nGene detected
+
+```{r fig.dim=c(6, 3.5)}
+# Relation between nUMI and nGene detected
+Cell.QC.Stat <- Raw.data@meta.data
+Cell.QC.Stat$Barcodes <- rownames(Cell.QC.Stat)
+
+p1 <- ggplot(Cell.QC.Stat, aes(x=nUMI, y=nGene)) + geom_point() + geom_smooth(method="lm")
+p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
+
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+p2 <- ggMarginal(p2, type = "histogram", fill="lightgrey")
+
+plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(1, 1)) ; rm(p1,p2)
+```
+Cells with deviating nGene/nUMI ratio display an [Erythrocyte signature](http://mousebrain.org/development/celltypes.html)
+
+```{r}
+genes.list <- list(c("Hbb-bt", "Hbq1a", "Isg20", "Fech", "Snca", "Rec114"))
+enrich.name <- "Erythrocyte.signature"
+Raw.data <- AddModuleScore(Raw.data,
+                           genes.list = genes.list,
+                           genes.pool = NULL,
+                           n.bin = 5,
+                           seed.use = 1,
+                           ctrl.size = length(genes.list),
+                           use.k = FALSE,
+                           enrich.name = enrich.name,
+                           random.seed = 1)
+
+Cell.QC.Stat$Erythrocyte.signature <- Raw.data@meta.data$Erythrocyte.signature1
+```
+
+```{r fig.dim=c(4, 4)}
+gradient <- colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)
+
+p1 <- ggplot(Cell.QC.Stat, aes(x= log10(nUMI), y= log10(nGene))) +
+      geom_point(aes(color= Erythrocyte.signature))  + 
+      scale_color_gradientn(colours=rev(gradient), name='Erythrocyte score') +
+      geom_smooth(method="lm")
+
+
+p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
+p1
+```
+## Low quality cell filtering 
+
+### Filtering cells based on percentage of mitochondrial transcripts
+
+We applied a high and low median absolute deviation (mad) thresholds to exclude outlier cells
+
+```{r}
+max.mito.thr <- median(Cell.QC.Stat$percent.mito) + 3*mad(Cell.QC.Stat$percent.mito)
+min.mito.thr <- median(Cell.QC.Stat$percent.mito) - 3*mad(Cell.QC.Stat$percent.mito)
+```
+
+```{r fig.dim=c(4, 4)}
+p1 <- ggplot(Cell.QC.Stat, aes(x=nGene, y=percent.mito)) +
+  geom_point() +
+  geom_hline(aes(yintercept = max.mito.thr), colour = "red", linetype = 2) +
+  geom_hline(aes(yintercept = min.mito.thr), colour = "red", linetype = 2) +
+  annotate(geom = "text", label = paste0(as.numeric(table(Cell.QC.Stat$percent.mito > max.mito.thr | Cell.QC.Stat$percent.mito < min.mito.thr)[2])," cells removed\n",
+                                         as.numeric(table(Cell.QC.Stat$percent.mito > max.mito.thr | Cell.QC.Stat$percent.mito < min.mito.thr)[1])," cells remain"),
+           x = 6000, y = 0.4)
+
+ggMarginal(p1, type = "histogram", fill="lightgrey", bins=100) 
+```
+
+```{r}
+# Filter cells based on these thresholds
+Cell.QC.Stat <- Cell.QC.Stat %>% filter(percent.mito < max.mito.thr) %>% filter(percent.mito > min.mito.thr)
+```
+
+### Filtering cells based on number of genes and transcripts detected
+
+#### Remove cells with to few gene detected or with to many UMI counts
+
+We filter cells which are likely to be doublet based on their higher content of transcript detected as well as cell with to few genes/UMI sequenced
+
+```{r}
+# Set low and hight thresholds on the number of detected genes
+min.Genes.thr <- median(log10(Cell.QC.Stat$nGene)) - 3*mad(log10(Cell.QC.Stat$nGene))
+max.Genes.thr <- median(log10(Cell.QC.Stat$nGene)) + 3*mad(log10(Cell.QC.Stat$nGene))
+
+# Set hight threshold on the number of transcripts
+max.nUMI.thr <- median(log10(Cell.QC.Stat$nUMI)) + 3*mad(log10(Cell.QC.Stat$nUMI))
+```
+
+```{r fig.dim=c(4, 4)}
+# Gene/UMI scatter plot before filtering
+p1 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  geom_hline(aes(yintercept = min.Genes.thr), colour = "green", linetype = 2) +
+  geom_hline(aes(yintercept = max.Genes.thr), colour = "green", linetype = 2) +
+  geom_vline(aes(xintercept = max.nUMI.thr), colour = "red", linetype = 2)
+
+ggMarginal(p1, type = "histogram", fill="lightgrey")
+```
+```{r}
+# Filter cells base on both metrics
+Cell.QC.Stat <- Cell.QC.Stat %>% filter(log10(nGene) > min.Genes.thr) %>% filter(log10(nUMI) < max.nUMI.thr)
+```
+
+#### Filter cells below the main population nUMI/nGene relationship
+
+```{r fig.dim=c(4, 4)}
+lm.model <- lm(data = Cell.QC.Stat, formula = log10(nGene) ~ log10(nUMI))
+
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  geom_hline(aes(yintercept = min.Genes.thr), colour = "green", linetype = 2) +
+  geom_hline(aes(yintercept = max.Genes.thr), colour = "green", linetype = 2) +
+  geom_vline(aes(xintercept = max.nUMI.thr), colour = "red", linetype = 2) +
+  geom_abline(intercept = lm.model$coefficients[1] - 0.09 , slope = lm.model$coefficients[2], color="orange") +
+  annotate(geom = "text", label = paste0(dim(Cell.QC.Stat)[1], " QC passed cells"), x = 4, y = 3.8)
+
+ggMarginal(p2, type = "histogram", fill="lightgrey")
+```
+
+```{r}
+# Cells to exclude lie below an intercept offset of -0.09
+Cell.QC.Stat$valideCells <- log10(Cell.QC.Stat$nGene) > (log10(Cell.QC.Stat$nUMI) * lm.model$coefficients[2] + (lm.model$coefficients[1] - 0.09))
+```
+
+```{r fig.dim=c(4, 4)}
+p3 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+  geom_point(aes(colour = valideCells)) +
+  geom_smooth(method="lm") +
+  geom_abline(intercept = lm.model$coefficients[1] - 0.09 , slope = lm.model$coefficients[2], color="orange") + 
+  theme(legend.position="none") +
+  annotate(geom = "text", label = paste0(as.numeric(table(Cell.QC.Stat$valideCells)[2]), " QC passed cells\n",
+                                         as.numeric(table(Cell.QC.Stat$valideCells)[1]), " QC filtered"), x = 4, y = 3.8)
+
+ggMarginal(p3, type = "histogram", fill="lightgrey")
+```
+```{r}
+# Remove invalid cells
+Cell.QC.Stat <- Cell.QC.Stat %>% filter(valideCells)
+```
+
+##### Keep only the valid cells in the Seurat object
+
+```{r}
+Raw.data <- SubsetData(Raw.data, cells.use = Cell.QC.Stat$Barcodes , subset.raw = T,  do.clean = F)
+```
+
+
+```{r fig.dim=c(4, 4)}
+# Plot final QC metrics
+VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
+```
+
+
+```{r fig.dim=c(4, 4)}
+p1 <- ggplot(Raw.data@meta.data, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+ggMarginal(p1, type = "histogram", fill="lightgrey")
+```
+
+```{r}
+rm(list = ls()[!ls() %in% "Raw.data"])
+```
+
+## Use Scrublet to detect obvious doublets
+
+### Run Scrublet with default parameter
+
+Export raw count matrix as input to Scrublet
+```{r message=FALSE, warning=FALSE}
+#Export filtered matrix
+dir.create("../../Scrublet_inputs")
+
+exprData <- Matrix(as.matrix(Raw.data@raw.data), sparse = TRUE)
+writeMM(exprData, "../../Scrublet_inputs/matrix1.mtx")
+```
+
+```{python }
+import scrublet as scr
+import scipy.io
+import numpy as np
+import os
+
+#Load raw counts matrix and gene list
+input_dir = '../../Scrublet_inputs'
+counts_matrix = scipy.io.mmread(input_dir + '/matrix1.mtx').T.tocsc()
+
+#Initialize Scrublet
+scrub = scr.Scrublet(counts_matrix,
+                     expected_doublet_rate=0.1,
+                     sim_doublet_ratio=2,
+                     n_neighbors = 8)
+
+#Run the default pipeline
+doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=1, 
+                                                          min_cells=3, 
+                                                          min_gene_variability_pctl=85, 
+                                                          n_prin_comps=25)
+
+
+```
+
+```{r fig.dim=c(4, 3)}
+# Import scrublet's doublet score
+Raw.data@meta.data$Doubletscore <- py$doublet_scores
+
+# Plot doublet score
+ggplot(Raw.data@meta.data, aes(x = Doubletscore, stat(ndensity))) +
+  geom_histogram(bins = 200, colour ="lightgrey")+
+  geom_vline(xintercept = 0.20, colour = "red", linetype = 2)
+
+```
+
+```{r}
+# Manually set threshold at doublet score to 0.2
+Raw.data@meta.data$Predicted_doublets <- ifelse(py$doublet_scores > 0.2, "Doublet","Singlet" )
+table(Raw.data@meta.data$Predicted_doublets)
+```
+### Filter doublets
+
+```{r}
+#Remove Scrublet inferred doublets
+Valid.Cells <- rownames(Raw.data@meta.data[Raw.data@meta.data$Predicted_doublets == "Singlet",])
+
+QC.data.1 <- SubsetData(Raw.data,  cells.use = Valid.Cells, subset.raw = T, do.clean = F)
+```
+
+```{r}
+rm(list = ls()[!ls() %in% "QC.data.1"])
+```
+
+
+# Process the second library
+
+## Load the raw filtered matrix output from Cellranger
+
+```{r}
+Countdata <- Read10X(data.dir = "../../RawData/Hem_2_filtered_feature_bc_matrix/")
+
+Raw.data <- CreateSeuratObject(raw.data = Countdata,
+                              min.cells = 3,
+                              min.genes = 800,
+                              project = "Hem2") ; rm(Countdata)
+
+Raw.data@meta.data$Barcodes <- rownames(Raw.data@meta.data)
+
+dim(Raw.data@data)
+```
+## Compute mito and ribo gene content per cell
+
+```{r}
+mito.genes <- grep(pattern = "^mt-", x = rownames(x = Raw.data@data), value = TRUE)
+percent.mito <- Matrix::colSums(Raw.data@raw.data[mito.genes, ])/Matrix::colSums(Raw.data@raw.data)
+Raw.data <- AddMetaData(object = Raw.data, metadata = percent.mito, col.name = "percent.mito")
+
+ribo.genes <- grep(pattern = "(^Rpl|^Rps|^Mrp)", x = rownames(x = Raw.data@data), value = TRUE)
+percent.ribo <- Matrix::colSums(Raw.data@raw.data[ribo.genes, ])/Matrix::colSums(Raw.data@raw.data)
+Raw.data <- AddMetaData(object = Raw.data, metadata = percent.ribo, col.name = "percent.ribo")
+
+rm(mito.genes, percent.mito,ribo.genes,percent.ribo)
+```
+
+```{r fig.dim=c(5, 4)}
+VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
+```
+
+
+## Inspect cell based on relation between nUMI and nGene detected
+
+```{r fig.dim=c(6, 3.5)}
+# Relation between nUMI and nGene detected
+Cell.QC.Stat <- Raw.data@meta.data
+Cell.QC.Stat$Barcodes <- rownames(Cell.QC.Stat)
+
+p1 <- ggplot(Cell.QC.Stat, aes(x=nUMI, y=nGene)) + geom_point() + geom_smooth(method="lm")
+p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
+
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+p2 <- ggMarginal(p2, type = "histogram", fill="lightgrey")
+
+plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(1, 1)) ; rm(p1,p2)
+```
+
+Cells with deviating nGene/nUMI ratio display an [Erythrocyte signature](http://mousebrain.org/development/celltypes.html)
+
+```{r}
+genes.list <- list(c("Hbb-bt", "Hbq1a", "Isg20", "Fech", "Snca", "Rec114"))
+enrich.name <- "Erythrocyte.signature"
+Raw.data <- AddModuleScore(Raw.data,
+                           genes.list = genes.list,
+                           genes.pool = NULL,
+                           n.bin = 5,
+                           seed.use = 1,
+                           ctrl.size = length(genes.list),
+                           use.k = FALSE,
+                           enrich.name = enrich.name,
+                           random.seed = 1)
+
+Cell.QC.Stat$Erythrocyte.signature <- Raw.data@meta.data$Erythrocyte.signature1
+```
+
+```{r fig.dim=c(4, 4)}
+gradient <- colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)
+
+p1 <- ggplot(Cell.QC.Stat, aes(x= log10(nUMI), y= log10(nGene))) +
+      geom_point(aes(color= Erythrocyte.signature))  + 
+      scale_color_gradientn(colours=rev(gradient), name='Erythrocyte score') +
+      geom_smooth(method="lm")
+
+
+p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
+p1
+```
+
+## Low quality cell filtering 
+
+### Filtering cells based on percentage of mitochondrial transcripts
+
+We applied a high and low median absolute deviation (mad) thresholds to exclude outlier cells
+
+```{r}
+max.mito.thr <- median(Cell.QC.Stat$percent.mito) + 3*mad(Cell.QC.Stat$percent.mito)
+min.mito.thr <- median(Cell.QC.Stat$percent.mito) - 3*mad(Cell.QC.Stat$percent.mito)
+```
+
+```{r fig.dim=c(4, 4)}
+p1 <- ggplot(Cell.QC.Stat, aes(x=nGene, y=percent.mito)) +
+  geom_point() +
+  geom_hline(aes(yintercept = max.mito.thr), colour = "red", linetype = 2) +
+  geom_hline(aes(yintercept = min.mito.thr), colour = "red", linetype = 2) +
+  annotate(geom = "text", label = paste0(as.numeric(table(Cell.QC.Stat$percent.mito > max.mito.thr | Cell.QC.Stat$percent.mito < min.mito.thr)[2])," cells removed\n",
+                                         as.numeric(table(Cell.QC.Stat$percent.mito > max.mito.thr | Cell.QC.Stat$percent.mito < min.mito.thr)[1])," cells remain"),
+           x = 6000, y = 0.4)
+
+ggMarginal(p1, type = "histogram", fill="lightgrey", bins=100) 
+```
+
+```{r}
+# Filter cells based on these thresholds
+Cell.QC.Stat <- Cell.QC.Stat %>% filter(percent.mito < max.mito.thr) %>% filter(percent.mito > min.mito.thr)
+```
+
+### Filtering cells based on number of genes and transcripts detected
+
+#### Remove cells with to few gene detected or with to many UMI counts
+
+We filter cells which are likely to be doublet based on their higher content of transcript detected as well as cell with to few genes/UMI sequenced
+
+```{r}
+# Set low and hight thresholds on the number of detected genes
+min.Genes.thr <- median(log10(Cell.QC.Stat$nGene)) - 3*mad(log10(Cell.QC.Stat$nGene))
+max.Genes.thr <- median(log10(Cell.QC.Stat$nGene)) + 3*mad(log10(Cell.QC.Stat$nGene))
+
+# Set hight threshold on the number of transcripts
+max.nUMI.thr <- median(log10(Cell.QC.Stat$nUMI)) + 3*mad(log10(Cell.QC.Stat$nUMI))
+```
+
+```{r fig.dim=c(4, 4)}
+# Gene/UMI scatter plot before filtering
+p1 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  geom_hline(aes(yintercept = min.Genes.thr), colour = "green", linetype = 2) +
+  geom_hline(aes(yintercept = max.Genes.thr), colour = "green", linetype = 2) +
+  geom_vline(aes(xintercept = max.nUMI.thr), colour = "red", linetype = 2)
+
+ggMarginal(p1, type = "histogram", fill="lightgrey")
+```
+```{r}
+# Filter cells base on both metrics
+Cell.QC.Stat <- Cell.QC.Stat %>% filter(log10(nGene) > min.Genes.thr) %>% filter(log10(nUMI) < max.nUMI.thr)
+```
+
+#### Filter cells below the main population nUMI/nGene relationship
+
+```{r fig.dim=c(4, 4)}
+lm.model <- lm(data = Cell.QC.Stat, formula = log10(nGene) ~ log10(nUMI))
+
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  geom_hline(aes(yintercept = min.Genes.thr), colour = "green", linetype = 2) +
+  geom_hline(aes(yintercept = max.Genes.thr), colour = "green", linetype = 2) +
+  geom_vline(aes(xintercept = max.nUMI.thr), colour = "red", linetype = 2) +
+  geom_abline(intercept = lm.model$coefficients[1] - 0.09 , slope = lm.model$coefficients[2], color="orange") +
+  annotate(geom = "text", label = paste0(dim(Cell.QC.Stat)[1], " QC passed cells"), x = 4, y = 3.8)
+
+ggMarginal(p2, type = "histogram", fill="lightgrey")
+```
+
+```{r}
+# Cells to exclude lie below an intercept offset of -0.09
+Cell.QC.Stat$valideCells <- log10(Cell.QC.Stat$nGene) > (log10(Cell.QC.Stat$nUMI) * lm.model$coefficients[2] + (lm.model$coefficients[1] - 0.09))
+```
+
+```{r fig.dim=c(4, 4)}
+p3 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+  geom_point(aes(colour = valideCells)) +
+  geom_smooth(method="lm") +
+  geom_abline(intercept = lm.model$coefficients[1] - 0.09 , slope = lm.model$coefficients[2], color="orange") + 
+  theme(legend.position="none") +
+  annotate(geom = "text", label = paste0(as.numeric(table(Cell.QC.Stat$valideCells)[2]), " QC passed cells\n",
+                                         as.numeric(table(Cell.QC.Stat$valideCells)[1]), " QC filtered"), x = 4, y = 3.8)
+
+ggMarginal(p3, type = "histogram", fill="lightgrey")
+```
+```{r}
+# Remove invalid cells
+Cell.QC.Stat <- Cell.QC.Stat %>% filter(valideCells)
+```
+
+##### Keep only the valid cells in the Seurat object
+
+```{r}
+Raw.data <- SubsetData(Raw.data, cells.use = Cell.QC.Stat$Barcodes , subset.raw = T,  do.clean = F)
+```
+
+
+```{r fig.dim=c(4, 4)}
+# Plot final QC metrics
+VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
+```
+
+
+```{r fig.dim=c(4, 4)}
+p1 <- ggplot(Raw.data@meta.data, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+ggMarginal(p1, type = "histogram", fill="lightgrey")
+```
+
+```{r}
+rm(list = ls()[!ls() %in% c("Raw.data", "QC.data.1")])
+```
+
+## Use Scrublet to detect obvious doublets
+
+### Run Scrublet with default parameter
+
+Export raw count matrix as input to Scrublet
+```{r message=FALSE, warning=FALSE}
+#Export filtered matrix
+exprData <- Matrix(as.matrix(Raw.data@raw.data), sparse = TRUE)
+writeMM(exprData, "../../Scrublet_inputs/matrix2.mtx")
+```
+
+```{python }
+import scrublet as scr
+import scipy.io
+import numpy as np
+import os
+
+#Load raw counts matrix and gene list
+input_dir = '../../Scrublet_inputs'
+counts_matrix = scipy.io.mmread(input_dir + '/matrix2.mtx').T.tocsc()
+
+#Initialize Scrublet
+scrub = scr.Scrublet(counts_matrix,
+                     expected_doublet_rate=0.1,
+                     sim_doublet_ratio=2,
+                     n_neighbors = 8)
+
+#Run the default pipeline
+doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=1, 
+                                                          min_cells=3, 
+                                                          min_gene_variability_pctl=85, 
+                                                          n_prin_comps=25)
+
+
+```
+
+```{r fig.dim=c(4, 3)}
+# Import scrublet's doublet score
+Raw.data@meta.data$Doubletscore <- py$doublet_scores
+
+# Plot doublet score
+ggplot(Raw.data@meta.data, aes(x = Doubletscore, stat(ndensity))) +
+  geom_histogram(bins = 200, colour ="lightgrey")+
+  geom_vline(xintercept = 0.24, colour = "red", linetype = 2)
+
+```
+
+```{r}
+# Manually set threshold at doublet score to 0.2
+Raw.data@meta.data$Predicted_doublets <- ifelse(py$doublet_scores > 0.24, "Doublet","Singlet" )
+table(Raw.data@meta.data$Predicted_doublets)
+```
+
+### Filter doublets
+
+```{r}
+#Remove Scrublet inferred doublets
+Valid.Cells <- rownames(Raw.data@meta.data[Raw.data@meta.data$Predicted_doublets == "Singlet",])
+
+QC.data.2 <- SubsetData(Raw.data,  cells.use = Valid.Cells, subset.raw = T, do.clean = F)
+```
+
+```{r}
+rm(list = ls()[!ls() %in% c("QC.data.1", "QC.data.2")])
+```
+
+
+# Merge the two libraries
+
+```{r}
+Hem.data <- MergeSeurat(QC.data.1, QC.data.2,
+                        do.normalize = F,
+                        add.cell.id1 = "Hem1",
+                        add.cell.id2 = "Hem2")
+```
+```{r fig.dim=c(6, 3.5)}
+Cell.QC.Stat <- Hem.data@meta.data
+Cell.QC.Stat$Barcodes <- rownames(Cell.QC.Stat)
+
+p1 <- ggplot(Cell.QC.Stat, aes(x=nUMI, y=nGene)) + geom_point() + geom_smooth(method="lm")
+p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
+
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+p2 <- ggMarginal(p2, type = "histogram", fill="lightgrey")
+
+plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(1, 1)) ; rm(p1,p2)
+```
+```{r}
+rm(list = ls()[!ls() %in% "Hem.data"])
+```
+
+## Filter gene expression matrix
+
+```{r}
+# Filter genes expressed by less than 3 cells
+num.cells <- Matrix::rowSums(Hem.data@data > 0)
+genes.use <- names(x = num.cells[which(x = num.cells >= 3)])
+Hem.data@raw.data <- Hem.data@raw.data[genes.use, ]
+Hem.data@data <- Hem.data@data[genes.use, ]
+```
+
+```{r}
+# log-normalize the gene expression matrix
+Hem.data<- NormalizeData(object = Hem.data,
+                          normalization.method = "LogNormalize", 
+                          scale.factor = round(median(Hem.data@meta.data$nUMI)),
+                          display.progress = F)
+```
+
+## Generate SRING dimentionality reduction
+
+```{r}
+dir.create("SpringCoordinates")
+```
+
+```{r}
+# Export raw expression matrix and gene list to regenerate a spring plot
+exprData <- Matrix(as.matrix(Hem.data@raw.data), sparse = TRUE)
+writeMM(exprData, "SpringCoordinates/ExprData.mtx")
+```
+
+```{r}
+Genelist <- row.names(Hem.data@raw.data)
+write.table(Genelist, "SpringCoordinates/Genelist.csv", sep="\t", col.names = F, row.names = F)
+```
+
+
+Spring coordinates were generated using the online version of [SPRING](https://kleintools.hms.harvard.edu/tools/spring.html) with the following parameters :
+
+```
+Number of cells: 15333
+Number of genes that passed filter: 874
+Min expressing cells (gene filtering): 3
+Min number of UMIs (gene filtering): 3
+Gene variability %ile (gene filtering): 95
+Number of principal components: 20
+Number of nearest neighbors: 8
+Number of force layout iterations: 500
+```
+
+Import the new coordinates
+
+```{r}
+# Import Spring coordinates
+Coordinates <-read.table("~/Bureau/hem_spring.csv", sep=",", header = T)
+rownames(Coordinates) <- colnames(Hem.data@data)
+
+Hem.data <- SetDimReduction(Hem.data,
+                            reduction.type = "spring",
+                            slot = "cell.embeddings",
+                            new.data = as.matrix(Coordinates))
+
+Hem.data@dr$spring@key <- "spring"
+colnames(Hem.data@dr$spring@cell.embeddings) <- paste0(GetDimReduction(object= Hem.data, reduction.type = "spring",slot = "key"), c(1,2))
+```
+
+
+# Assign cell state scores
+
+## Cell-Cycle Scores
+
+```{r}
+s.genes <- c("Mcm5", "Pcna", "Tym5", "Fen1", "Mcm2", "Mcm4", "Rrm1", "Ung", "Gins2", "Mcm6", "Cdca7", "Dtl", "Prim1", "Uhrf1", "Mlf1ip", "Hells", "Rfc2", "Rap2", "Nasp", "Rad51ap1", "Gmnn", "Wdr76", "Slbp", "Ccne2", "Ubr7", "Pold3", "Msh2", "Atad2", "Rad51", "Rrm2", "Cdc45", "Cdc6", "Exo1", "Tipin", "Dscc1", "Blm", " Casp8ap2", "Usp1", "Clspn", "Pola1", "Chaf1b", "Brip1", "E2f8")
+g2m.genes <- c("Hmgb2", "Ddk1","Nusap1", "Ube2c", "Birc5", "Tpx2", "Top2a", "Ndc80", "Cks2", "Nuf2", "Cks1b", "Mki67", "Tmpo", " Cenpk", "Tacc3", "Fam64a", "Smc4", "Ccnb2", "Ckap2l", "Ckap2", "Aurkb", "Bub1", "Kif11", "Anp32e", "Tubb4b", "Gtse1", "kif20b", "Hjurp", "Cdca3", "Hn1", "Cdc20", "Ttk", "Cdc25c", "kif2c", "Rangap1", "Ncapd2", "Dlgap5", "Cdca2", "Cdca8", "Ect2", "Kif23", "Hmmr", "Aurka", "Psrc1", "Anln", "Lbr", "Ckap5", "Cenpe", "Ctcf", "Nek2", "G2e3", "Gas2l3", "Cbx5", "Cenpa")
+
+Hem.data <- CellCycleScoring(object = Hem.data,
+                             s.genes = s.genes,
+                             g2m.genes = g2m.genes,
+                             set.ident = TRUE)
+
+```
+
+```{r fig.dim=c(8, 6)}
+DimPlot(Hem.data,
+        reduction.use = "spring",
+        group.by = "Phase",
+        cols.use = wes_palette("GrandBudapest1", 3, type = "discrete")[3:1],
+        dim.1 = 1, 
+        dim.2 = 2,
+        do.label=T,
+        label.size = 4,
+        no.legend = F )
+```
+
+We assigned broad transcriptional cell state score based on known and manually curated marker genes
+
+## Apical progenitors
+```{r}
+APgenes <- c("Rgcc", "Sparc", "Hes5","Hes1", "Slc1a3",
+             "Ddah1", "Ldha", "Hmga2","Sfrp1", "Id4",
+             "Creb5", "Ptn", "Lpar1", "Rcn1","Zfp36l1",
+             "Sox9", "Sox2", "Nr2e1", "Ttyh1", "Trip6")
+genes.list <- list(APgenes)
+enrich.name <- "AP_signature"
+Hem.data <- AddModuleScore(Hem.data,
+                                  genes.list = genes.list,
+                                  genes.pool = NULL,
+                                  n.bin = 5,
+                                  seed.use = 1,
+                                  ctrl.size = length(genes.list),
+                                  use.k = FALSE,
+                                  enrich.name = enrich.name,
+                                  random.seed = 1)
+```
+
+```{r fig.show='hide' }
+plot <- FeaturePlot(object = Hem.data,
+                    features.plot = APgenes,
+                    cols.use = c("grey90", brewer.pal(9,"YlGnBu")),
+                    reduction.use = "spring",
+                    no.legend = T,
+                    overlay = F,
+                    dark.theme = F,
+                    do.return =T,
+                    no.axes = T)
+
+for (i in 1:length(plot)){
+  plot[[i]]$data <- plot[[i]]$data[order(plot[[i]]$data$gene),]
+}
+```
+
+```{r fig.dim=c(7, 9.3), fig.cap= "Apical progenitors gene expression"}
+cowplot::plot_grid(plotlist = plot[1:20], ncol = 5)
+```
+
+## Basal progenitors
+
+```{r}
+BPgenes <- c("Eomes", "Igsf8", "Insm1", "Elavl2", "Elavl4",
+             "Hes6","Gadd45g", "Neurog2", "Btg2", "Neurog1")
+genes.list <- list(BPgenes)
+enrich.name <- "BP_signature"
+Hem.data <- AddModuleScore(Hem.data,
+                                  genes.list = genes.list,
+                                  genes.pool = NULL,
+                                  n.bin = 5,
+                                  seed.use = 1,
+                                  ctrl.size = length(genes.list),
+                                  use.k = FALSE,
+                                  enrich.name = enrich.name,
+                                  random.seed = 1)
+```
+
+```{r fig.show='hide' }
+plot <- FeaturePlot(object = Hem.data,
+                    features.plot = BPgenes,
+                    cols.use = c("grey90", brewer.pal(9,"YlGnBu")),
+                    reduction.use = "spring",
+                    no.legend = T,
+                    overlay = F,
+                    dark.theme = F,
+                    do.return =T,
+                    no.axes = T)
+
+for (i in 1:length(plot)){
+  plot[[i]]$data <- plot[[i]]$data[order(plot[[i]]$data$gene),]
+}
+```
+
+```{r fig.dim=c(7, 7), fig.cap= "Basal progenitors gene expression"}
+cowplot::plot_grid(plotlist = plot[1:10], ncol = 5)
+```
+
+## Early pallial neurons
+
+```{r}
+ENgenes <- c("Mfap4", "Nhlh2", "Nhlh1", "Ppp1r14a", "Nav1",
+             "Neurod1", "Sorl1", "Svip", "Cxcl12", "Tenm4",
+             "Dll3", "Rgmb", "Cntn2", "Vat1")
+genes.list <- list(ENgenes)
+enrich.name <- "EN_signature"
+Hem.data <- AddModuleScore(Hem.data,
+                                  genes.list = genes.list,
+                                  genes.pool = NULL,
+                                  n.bin = 5,
+                                  seed.use = 1,
+                                  ctrl.size = length(genes.list),
+                                  use.k = FALSE,
+                                  enrich.name = enrich.name,
+                                  random.seed = 1)
+```
+
+```{r fig.show='hide' }
+plot <- FeaturePlot(object = Hem.data,
+                    features.plot = ENgenes,
+                    cols.use = c("grey90", brewer.pal(9,"YlGnBu")),
+                    reduction.use = "spring",
+                    no.legend = T,
+                    overlay = F,
+                    dark.theme = F,
+                    do.return =T,
+                    no.axes = T)
+
+for (i in 1:length(plot)){
+  plot[[i]]$data <- plot[[i]]$data[order(plot[[i]]$data$gene),]
+}
+```
+
+```{r fig.dim=c(7, 8.3), fig.cap= "Early pallial neurons gene expression"}
+cowplot::plot_grid(plotlist = plot[1:14], ncol = 5)
+```
+
+
+## Late pallial neurons
+
+```{r}
+LNgenes <- c("Snhg11", "Pcsk1n", "Mapt", "Ina", "Stmn4",
+             "Gap43", "Tubb2a", "Ly6h","Ptprd", "Mef2c")
+genes.list <- list(LNgenes)
+enrich.name <- "LN_signature"
+Hem.data <- AddModuleScore(Hem.data,
+                                  genes.list = genes.list,
+                                  genes.pool = NULL,
+                                  n.bin = 5,
+                                  seed.use = 1,
+                                  ctrl.size = length(genes.list),
+                                  use.k = FALSE,
+                                  enrich.name = enrich.name,
+                                  random.seed = 1)
+```
+
+```{r fig.show='hide' }
+plot <- FeaturePlot(object = Hem.data,
+                    features.plot = LNgenes,
+                    cols.use = c("grey90", brewer.pal(9,"YlGnBu")),
+                    reduction.use = "spring",
+                    no.legend = T,
+                    overlay = F,
+                    dark.theme = F,
+                    do.return =T,
+                    no.axes = T)
+
+for (i in 1:length(plot)){
+  plot[[i]]$data <- plot[[i]]$data[order(plot[[i]]$data$gene),]
+}
+```
+
+```{r fig.dim=c(7, 7), fig.cap= "Late pallial neurons gene expression"}
+cowplot::plot_grid(plotlist = plot[1:10], ncol = 5)
+```
+
+
+```{r fig.dim=c(6, 9)}
+FeaturePlot(object = Hem.data,
+            features.plot = c("AP_signature1", "BP_signature1",
+                              "EN_signature1", "LN_signature1"),
+            cols.use = rev(brewer.pal(10,"Spectral")),
+            reduction.use = "spring",
+            no.legend = T,
+            overlay = F,
+            dark.theme = F,
+            no.axes = T)
+```
+
+# Session Info
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
