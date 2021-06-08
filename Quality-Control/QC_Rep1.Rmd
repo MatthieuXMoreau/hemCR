@@ -640,14 +640,16 @@ write.table(Genelist, "../../SpringCoordinates/Genelist.csv", sep="\t", col.name
 
 Spring coordinates were generated using the online version of [SPRING](https://kleintools.hms.harvard.edu/tools/spring.html) with the following parameters :
 
-    Number of cells: 15333
-    Number of genes that passed filter: 874
-    Min expressing cells (gene filtering): 3
-    Min number of UMIs (gene filtering): 3
-    Gene variability %ile (gene filtering): 95
-    Number of principal components: 20
-    Number of nearest neighbors: 8
-    Number of force layout iterations: 500
+```
+Number of cells: 15333
+Number of genes that passed filter: 874
+Min expressing cells (gene filtering): 3
+Min number of UMIs (gene filtering): 3
+Gene variability %ile (gene filtering): 95
+Number of principal components: 20
+Number of nearest neighbors: 8
+Number of force layout iterations: 500
+```
 
 Import the new coordinates
 
