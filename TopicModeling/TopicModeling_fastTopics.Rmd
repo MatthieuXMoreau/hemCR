@@ -25,7 +25,7 @@ knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=
 ```{r message=FALSE, warning=FALSE}
 library(Seurat)
 library(fastTopics)
-
+library(Matrix)
 library(dplyr)
 library(RColorBrewer)
 library(ggplot2)
@@ -37,6 +37,20 @@ library(wesanderson)
 theme_set(theme_classic())
 ```
 
+# load the dataset
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+
+counts <- Hem.data@raw.data
+
+```
+
+# Fit the topic model
+
+```{r}
+fit <- fit_topic_model(counts,k = 6)
+```
 
 
 # Session Info
