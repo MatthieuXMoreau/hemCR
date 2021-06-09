@@ -55,13 +55,13 @@ format(Sys.time(), "%d %B, %Y, %H,%M")
 
 fit <- fit_topic_model(counts,
                        k = 60,
-                       numiter.main = 200,
-                       numiter.refine = 200,
+                       numiter.main = 150,
+                       numiter.refine = 150,
                        method.main = "em",
                        method.refine = "scd",
                        control.main = list(nc = 6, numiter = 4),
                        control.refine = list(nc = 6, numiter = 4, extrapolate = TRUE),
-                       verbose = c("detailed"))
+                       verbose = c("progressbar"))
 
 format(Sys.time(), "%d %B, %Y, %H,%M")
 ```
