@@ -32,9 +32,12 @@ library(ggplot2)
 library(ggExtra)
 library(cowplot)
 library(wesanderson)
+library(RcppParallel)
 
 #Set ggplot theme as classic
 theme_set(theme_classic())
+
+set.seed(1)
 ```
 
 # load the dataset
@@ -48,13 +51,21 @@ counts <- t(Hem.data@raw.data)
 # Fit the topic model
 
 ```{r}
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
 fit <- fit_topic_model(counts,
                        k = 60,
                        numiter.main = 200,
                        numiter.refine = 200,
                        method.main = "em",
-                       method.refine = "scd")
+                       method.refine = "scd",
+                       control.main = list(nc = 6, numiter = 4),
+                       control.refine = list(nc = 6, numiter = 4, extrapolate = TRUE),
+                       verbose = c("detailed"))
+
+format(Sys.time(), "%d %B, %Y, %H,%M")
 ```
+
 ```{r}
 # Add cells' topics loading to the metadata
 Hem.data@meta.data <- cbind(Hem.data@meta.data, fit$L)
@@ -79,7 +90,14 @@ for (i in 1:length(plot)){
 
 ```{r fig.dim=c(6, 9)}
 cowplot::plot_grid(plotlist = plot[1:6], ncol = 2)
+
 ```
+# 
+
+```{r}
+dfa_out <- diff_count_analysis(fit,counts)
+```
+
 
 # Session Info
 
