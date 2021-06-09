@@ -42,16 +42,44 @@ theme_set(theme_classic())
 ```{r}
 Hem.data <- readRDS("../QC.filtered.cells.RDS")
 
-counts <- Hem.data@raw.data
-
+counts <- t(Hem.data@raw.data)
 ```
 
 # Fit the topic model
 
 ```{r}
-fit <- fit_topic_model(counts,k = 6)
+fit <- fit_topic_model(counts,
+                       k = 60,
+                       numiter.main = 200,
+                       numiter.refine = 200,
+                       method.main = "em",
+                       method.refine = "scd")
+```
+```{r}
+# Add cells' topics loading to the metadata
+Hem.data@meta.data <- cbind(Hem.data@meta.data, fit$L)
 ```
 
+
+```{r fig.dim=c(6, 9)}
+plot <- FeaturePlot(object = Hem.data,
+                    features.plot = paste0("k", 1:6),
+                    cols.use = rev(brewer.pal(10,"Spectral")),
+                    reduction.use = "spring",
+                    no.legend = T,
+                    overlay = F,
+                    dark.theme = F,
+                    do.return =T,
+                    no.axes = T)
+
+for (i in 1:length(plot)){
+  plot[[i]]$data <- plot[[i]]$data[order(plot[[i]]$data$gene),]
+}
+```
+
+```{r fig.dim=c(6, 9)}
+cowplot::plot_grid(plotlist = plot[1:6], ncol = 2)
+```
 
 # Session Info
 
