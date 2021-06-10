@@ -32,12 +32,11 @@ library(ggplot2)
 library(ggExtra)
 library(cowplot)
 library(wesanderson)
+library(Rcpp)
 library(RcppParallel)
 
 #Set ggplot theme as classic
 theme_set(theme_classic())
-
-set.seed(1)
 ```
 
 # load the dataset
@@ -50,31 +49,42 @@ counts <- t(Hem.data@raw.data)
 
 # Fit the topic model
 
-```{r}
-format(Sys.time(), "%d %B, %Y, %H,%M")
+```{r cache=TRUE, eval=FALSE, include=TRUE}
+set.seed(1)
 
 fit <- fit_topic_model(counts,
                        k = 60,
-                       numiter.main = 150,
-                       numiter.refine = 150,
+                       numiter.main = 300,
+                       numiter.refine = 300,
                        method.main = "em",
                        method.refine = "scd",
                        control.main = list(nc = 6, numiter = 4),
                        control.refine = list(nc = 6, numiter = 4, extrapolate = TRUE),
                        verbose = c("progressbar"))
-
-format(Sys.time(), "%d %B, %Y, %H,%M")
 ```
+
+```{r}
+fit <- readRDS("fit_topic_model_k60_150iter.RDS")
+```
+
 
 ```{r}
 # Add cells' topics loading to the metadata
 Hem.data@meta.data <- cbind(Hem.data@meta.data, fit$L)
 ```
 
+```{r}
+plot_progress(fit,x = "iter",add.point.every = 10,
+                          colors = "black") +
+  theme_cowplot(font_size = 10)
+```
 
-```{r fig.dim=c(6, 9)}
+
+# Explore the different topics
+
+```{r }
 plot <- FeaturePlot(object = Hem.data,
-                    features.plot = paste0("k", 1:6),
+                    features.plot = paste0("k", 1:60),
                     cols.use = rev(brewer.pal(10,"Spectral")),
                     reduction.use = "spring",
                     no.legend = T,
@@ -89,13 +99,27 @@ for (i in 1:length(plot)){
 ```
 
 ```{r fig.dim=c(6, 9)}
-cowplot::plot_grid(plotlist = plot[1:6], ncol = 2)
-
+cowplot::plot_grid(plotlist = plot[1:20], ncol = 7)
 ```
-# 
+```{r fig.dim=c(6, 9)}
+cowplot::plot_grid(plotlist = plot[21:40], ncol = 7)
+```
+
+```{r fig.dim=c(6, 9)}
+cowplot::plot_grid(plotlist = plot[41:60], ncol = 7)
+```
+# Identify to genes associated with topics
 
 ```{r}
-dfa_out <- diff_count_analysis(fit,counts)
+dfa_out <- diff_count_analysis(fit,
+                               counts)
+```
+
+```{r}
+volcano_plot(dfa_out,
+             k = 11,
+             label_above_quantile = 0.995,
+             labels = genes$symbol)
 ```
 
 
