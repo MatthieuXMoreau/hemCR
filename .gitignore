@@ -1,6 +1,6 @@
 hemCR.Rproj
 
-/**/*.html
+**/*.html
 *html
 
 # Template form https://github.com/github/gitignore/blob/master/R.gitignore
