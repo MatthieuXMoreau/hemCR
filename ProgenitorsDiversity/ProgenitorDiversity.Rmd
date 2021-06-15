@@ -1,0 +1,126 @@
+---
+title: "Analysis of the progenitors diverity"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE)
+```
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(Matrix)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# load the dataset
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+```
+
+# Extract the apical progenitors 
+
+```{r}
+set.seed(100)
+
+# K-means clustering based on AP, BP scores across cells
+cl <- kmeans(cbind(Hem.data@meta.data$AP_signature1, Hem.data@meta.data$BP_signature1, Hem.data@meta.data$EN_signature1,
+                   Hem.data@meta.data$Meninges_signature1, Hem.data@meta.data$Immune_signature1), 5)
+Hem.data@meta.data$kmeanClust <- paste0("Clust.",cl$cluster)
+```
+
+
+```{r}
+p1 <- ggplot(Hem.data@meta.data, aes(x=AP_signature1, y=BP_signature1, colour = kmeanClust)) +
+      scale_color_manual(values= c("#d14c8d", "#4cabdc", "#5ab793", "#046c9a", "#e7823a")) +
+      geom_point() + 
+      theme(legend.position="none")
+
+ggMarginal(p1, type = "histogram", fill="lightgrey") ; rm(p1)
+```
+```{r}
+DimPlot(Hem.data,
+        group.by = "kmeanClust",
+        reduction.use = "spring",
+        cols.use = c("#d14c8d", "#4cabdc","#046c9a", "#5ab793", "#e7823a","#4cabdc"),
+        dim.1 = 1,
+        dim.2 = 2,
+        do.label=T,
+        label.size = 4,
+        no.legend = F)
+```
+```{r}
+# Extract apical progenitors 
+barcodes <- Hem.data@meta.data %>% filter(kmeanClust %in% c("Clust.3", "Clust.1")) %>% pull(Barcodes)
+Progenitors.data <-  SubsetData(Hem.data, cells.use = barcodes , subset.raw = T,  do.clean = F)
+
+DimPlot(Progenitors.data,
+        group.by = "kmeanClust",
+        reduction.use = "spring",
+        cols.use = c("#5ab793", "#e7823a"),
+        dim.1 = 1,
+        dim.2 = 2,
+        do.label=T,
+        label.size = 4,
+        no.legend = F)
+```
+# Filter gene counts matrix
+
+```{r}
+# Remove non expressed genes
+num.cells <- Matrix::rowSums(Progenitors.data@data > 0)
+genes.use <- names(x = num.cells[which(x = num.cells >= 20)])
+Progenitors.data@raw.data <- Progenitors.data@raw.data[genes.use, ]
+Progenitors.data@data <- Progenitors.data@data[genes.use, ]
+
+# Normalize and Scale the data
+Progenitors.data <- NormalizeData(object = Progenitors.data,
+                                  normalization.method = "LogNormalize", 
+                                  scale.factor = round(median(Progenitors.data@meta.data$nUMI)),
+                                  display.progress = F)
+
+Progenitors.data <- FindVariableGenes(object = Progenitors.data,
+                                      mean.function = ExpMean,
+                                      dispersion.function = LogVMR,
+                                      x.low.cutoff = 0.0125,
+                                      x.high.cutoff = 3,
+                                      y.cutoff = 1, do.plot = F,
+                                      display.progress = F)
+
+Progenitors.data <- ScaleData(object = Progenitors.data, vars.to.regress = c("CC.Difference","percent.mito", "nUMI"), display.progress = F)
+```
+
+
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
