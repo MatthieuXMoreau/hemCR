@@ -171,8 +171,31 @@ for (i in 1:length(plot)){
 ```
 
 ```{r fig.dim=c(6, 9)}
-cowplot::plot_grid(plotlist = plot[c(6,2,9,4)], ncol = 2)
+cowplot::plot_grid(plotlist = plot[c(6,2,7,9)], ncol = 2)
 ```
+## Cluster Progenitors
+
+```{r}
+set.seed(1)
+pca <- prcomp(fit$L[,c(6,2,9,7)])$x
+clusters <- cluster::pam(pca, k = 4)$clustering
+```
+
+
+```{r}
+Progenitors.data@meta.data$TopicsKmeans <- as.numeric(clusters)
+
+DimPlot(Progenitors.data,
+        group.by = "TopicsKmeans",
+        reduction.use = "spring",
+        #cols.use = c("#5ab793", "#e7823a"),
+        dim.1 = 1,
+        dim.2 = 2,
+        do.label=T,
+        label.size = 4,
+        no.legend = F)
+```
+
 
 # Session Info
 
