@@ -24,6 +24,7 @@ knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=
 
 ```{r message=FALSE, warning=FALSE}
 library(Seurat)
+library(fastTopics)
 library(Matrix)
 library(dplyr)
 library(RColorBrewer)
@@ -114,6 +115,64 @@ Progenitors.data <- FindVariableGenes(object = Progenitors.data,
 Progenitors.data <- ScaleData(object = Progenitors.data, vars.to.regress = c("CC.Difference","percent.mito", "nUMI"), display.progress = F)
 ```
 
+# Topic modeling
+
+## Fit topic model
+
+```{r}
+counts <- t(Progenitors.data@raw.data)
+```
+
+```{r cache=TRUE} 
+set.seed(1)
+
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+fit <- fit_topic_model(counts,
+                       k = 10,
+                       numiter.main = 300,
+                       numiter.refine = 300,
+                       method.main = "em",
+                       method.refine = "scd",
+                       control.main = list(numiter = 4),
+                       control.refine = list(numiter = 4, extrapolate = TRUE),
+                       verbose = "progressbar")
+
+format(Sys.time(), "%d %B, %Y, %H,%M")
+```
+
+```{r}
+plot_progress(fit,x = "iter",add.point.every = 10,
+                          colors = "black") +
+  theme_cowplot(font_size = 10)
+```
+
+## Explore the different topics
+
+```{r}
+# Add cells' topics loading to the metadata
+Progenitors.data@meta.data <- cbind(Progenitors.data@meta.data, fit$L)
+```
+
+```{r fig.dim=c(6, 9)}
+plot <- FeaturePlot(object = Progenitors.data,
+                    features.plot = paste0("k", 1:10),
+                    cols.use = rev(brewer.pal(10,"Spectral")),
+                    reduction.use = "spring",
+                    no.legend = T,
+                    overlay = F,
+                    dark.theme = F,
+                    do.return =T,
+                    no.axes = T)
+
+for (i in 1:length(plot)){
+  plot[[i]]$data <- plot[[i]]$data[order(plot[[i]]$data$gene),]
+}
+```
+
+```{r fig.dim=c(6, 9)}
+cowplot::plot_grid(plotlist = plot[c(6,2,9,4)], ncol = 2)
+```
 
 # Session Info
 
