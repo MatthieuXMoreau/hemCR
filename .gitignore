@@ -1,8 +1,11 @@
-# Rproject file and html reports
+# Rproject file and html reports and cache
 
 hemCR.Rproj
 
 *.html
+
+*_cache
+*_files
 
 # Template from https://github.com/github/gitignore/blob/master/R.gitignore
 

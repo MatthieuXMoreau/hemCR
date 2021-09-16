@@ -126,8 +126,6 @@ counts <- t(Progenitors.data@raw.data)
 ```{r cache=TRUE} 
 set.seed(1)
 
-format(Sys.time(), "%d %B, %Y, %H,%M")
-
 fit <- fit_topic_model(counts,
                        k = 10,
                        numiter.main = 300,
@@ -137,8 +135,6 @@ fit <- fit_topic_model(counts,
                        control.main = list(numiter = 4),
                        control.refine = list(numiter = 4, extrapolate = TRUE),
                        verbose = "progressbar")
-
-format(Sys.time(), "%d %B, %Y, %H,%M")
 ```
 
 ```{r}
