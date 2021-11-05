@@ -25,6 +25,7 @@ set.seed(1234)
 
 ```{r message=FALSE, warning=FALSE}
 library(Seurat)
+library(Matrix)
 library(dplyr)
 library(RColorBrewer)
 library(ggplot2)
@@ -47,63 +48,56 @@ This dataset was generated from the sequencing of two 10X V3 libraries run in pa
 ```{r}
 Countdata <- Read10X(data.dir = "../../RawData/Hem_1_filtered_feature_bc_matrix/")
 
-Raw.data <- CreateSeuratObject(raw.data = Countdata,
+Raw.data <- CreateSeuratObject(counts = Countdata, 
                               min.cells = 3,
-                              min.genes = 800,
+                              min.features = 800,
                               project = "Hem1") ; rm(Countdata)
 
 Raw.data@meta.data$Barcodes <- rownames(Raw.data@meta.data)
 
-dim(Raw.data@data)
+Raw.data
 ```
 
 ## Compute mito and ribo gene content per cell
 
 ```{r}
-mito.genes <- grep(pattern = "^mt-", x = rownames(x = Raw.data@data), value = TRUE)
-percent.mito <- Matrix::colSums(Raw.data@raw.data[mito.genes, ])/Matrix::colSums(Raw.data@raw.data)
-Raw.data <- AddMetaData(object = Raw.data, metadata = percent.mito, col.name = "percent.mito")
+Raw.data$percent.mito <- PercentageFeatureSet(Raw.data, pattern = "^mt-")
+Raw.data$percent.ribo <- PercentageFeatureSet(Raw.data, pattern = "(^Rpl|^Rps|^Mrp)")
 
-ribo.genes <- grep(pattern = "(^Rpl|^Rps|^Mrp)", x = rownames(x = Raw.data@data), value = TRUE)
-percent.ribo <- Matrix::colSums(Raw.data@raw.data[ribo.genes, ])/Matrix::colSums(Raw.data@raw.data)
-Raw.data <- AddMetaData(object = Raw.data, metadata = percent.ribo, col.name = "percent.ribo")
-
-rm(mito.genes, percent.mito,ribo.genes,percent.ribo)
 ```
 
 ```{r fig.dim=c(5, 4)}
-VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
+VlnPlot(object = Raw.data, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"), ncol = 2 )
 ```
 
-## Inspect cell based on relation between nUMI and nGene detected
+## Inspect cell based on relation between nCount_RNA and nFeature_RNA detected
 
 ```{r fig.dim=c(6, 3.5)}
-# Relation between nUMI and nGene detected
+# Relation between nCount_RNA and nFeature_RNA detected
 Cell.QC.Stat <- Raw.data@meta.data
 Cell.QC.Stat$Barcodes <- rownames(Cell.QC.Stat)
 
-p1 <- ggplot(Cell.QC.Stat, aes(x=nUMI, y=nGene)) + geom_point() + geom_smooth(method="lm")
+p1 <- ggplot(Cell.QC.Stat, aes(x=nCount_RNA, y=nFeature_RNA)) + geom_point() + geom_smooth(method="lm")
 p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
 
-p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) + geom_point() + geom_smooth(method="lm")
 p2 <- ggMarginal(p2, type = "histogram", fill="lightgrey")
 
 plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(1, 1)) ; rm(p1,p2)
 ```
 
-Cells with deviating nGene/nUMI ratio display an [Erythrocyte signature](http://mousebrain.org/development/celltypes.html)
+Cells with deviating nFeature_RNA/nCount_RNA ratio display an [Erythrocyte signature](http://mousebrain.org/development/celltypes.html)
 
 ```{r}
 genes.list <- list(c("Hbb-bt", "Hbq1a", "Isg20", "Fech", "Snca", "Rec114"))
-enrich.name <- "Erythrocyte.signature"
 Raw.data <- AddModuleScore(Raw.data,
-                           genes.list = genes.list,
-                           genes.pool = NULL,
+                           features = genes.list,
+                           pool = NULL,
                            n.bin = 5,
                            seed.use = 1,
                            ctrl.size = length(genes.list),
                            use.k = FALSE,
-                           enrich.name = enrich.name,
+                           name = "Erythrocyte.signature",
                            random.seed = 1)
 
 Cell.QC.Stat$Erythrocyte.signature <- Raw.data@meta.data$Erythrocyte.signature1
@@ -112,7 +106,7 @@ Cell.QC.Stat$Erythrocyte.signature <- Raw.data@meta.data$Erythrocyte.signature1
 ```{r fig.dim=c(4, 4)}
 gradient <- colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)
 
-p1 <- ggplot(Cell.QC.Stat, aes(x= log10(nUMI), y= log10(nGene))) +
+p1 <- ggplot(Cell.QC.Stat, aes(x= log10(nCount_RNA), y= log10(nFeature_RNA))) +
       geom_point(aes(color= Erythrocyte.signature))  + 
       scale_color_gradientn(colours=rev(gradient), name='Erythrocyte score') +
       geom_smooth(method="lm")
@@ -134,13 +128,13 @@ min.mito.thr <- median(Cell.QC.Stat$percent.mito) - 3*mad(Cell.QC.Stat$percent.m
 ```
 
 ```{r fig.dim=c(4, 4)}
-p1 <- ggplot(Cell.QC.Stat, aes(x=nGene, y=percent.mito)) +
+p1 <- ggplot(Cell.QC.Stat, aes(x=nFeature_RNA, y=percent.mito)) +
   geom_point() +
   geom_hline(aes(yintercept = max.mito.thr), colour = "red", linetype = 2) +
   geom_hline(aes(yintercept = min.mito.thr), colour = "red", linetype = 2) +
   annotate(geom = "text", label = paste0(as.numeric(table(Cell.QC.Stat$percent.mito > max.mito.thr | Cell.QC.Stat$percent.mito < min.mito.thr)[2])," cells removed\n",
                                          as.numeric(table(Cell.QC.Stat$percent.mito > max.mito.thr | Cell.QC.Stat$percent.mito < min.mito.thr)[1])," cells remain"),
-           x = 6000, y = 0.4)
+           x = 6000, y = 40)
 
 ggMarginal(p1, type = "histogram", fill="lightgrey", bins=100) 
 ```
@@ -158,41 +152,41 @@ We filter cells which are likely to be doublet based on their higher content of 
 
 ```{r}
 # Set low and hight thresholds on the number of detected genes
-min.Genes.thr <- median(log10(Cell.QC.Stat$nGene)) - 3*mad(log10(Cell.QC.Stat$nGene))
-max.Genes.thr <- median(log10(Cell.QC.Stat$nGene)) + 3*mad(log10(Cell.QC.Stat$nGene))
+min.Genes.thr <- median(log10(Cell.QC.Stat$nFeature_RNA)) - 3*mad(log10(Cell.QC.Stat$nFeature_RNA))
+max.Genes.thr <- median(log10(Cell.QC.Stat$nFeature_RNA)) + 3*mad(log10(Cell.QC.Stat$nFeature_RNA))
 
 # Set hight threshold on the number of transcripts
-max.nUMI.thr <- median(log10(Cell.QC.Stat$nUMI)) + 3*mad(log10(Cell.QC.Stat$nUMI))
+max.nCount_RNA.thr <- median(log10(Cell.QC.Stat$nCount_RNA)) + 3*mad(log10(Cell.QC.Stat$nCount_RNA))
 ```
 
 ```{r fig.dim=c(4, 4)}
 # Gene/UMI scatter plot before filtering
-p1 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+p1 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) +
   geom_point() +
   geom_smooth(method="lm") +
   geom_hline(aes(yintercept = min.Genes.thr), colour = "green", linetype = 2) +
   geom_hline(aes(yintercept = max.Genes.thr), colour = "green", linetype = 2) +
-  geom_vline(aes(xintercept = max.nUMI.thr), colour = "red", linetype = 2)
+  geom_vline(aes(xintercept = max.nCount_RNA.thr), colour = "red", linetype = 2)
 
 ggMarginal(p1, type = "histogram", fill="lightgrey")
 ```
 
 ```{r}
 # Filter cells base on both metrics
-Cell.QC.Stat <- Cell.QC.Stat %>% filter(log10(nGene) > min.Genes.thr) %>% filter(log10(nUMI) < max.nUMI.thr)
+Cell.QC.Stat <- Cell.QC.Stat %>% filter(log10(nFeature_RNA) > min.Genes.thr) %>% filter(log10(nCount_RNA) < max.nCount_RNA.thr)
 ```
 
-#### Filter cells below the main population nUMI/nGene relationship
+#### Filter cells below the main population nCount_RNA/nFeature_RNA relationship
 
 ```{r fig.dim=c(4, 4)}
-lm.model <- lm(data = Cell.QC.Stat, formula = log10(nGene) ~ log10(nUMI))
+lm.model <- lm(data = Cell.QC.Stat, formula = log10(nFeature_RNA) ~ log10(nCount_RNA))
 
-p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) +
   geom_point() +
   geom_smooth(method="lm") +
   geom_hline(aes(yintercept = min.Genes.thr), colour = "green", linetype = 2) +
   geom_hline(aes(yintercept = max.Genes.thr), colour = "green", linetype = 2) +
-  geom_vline(aes(xintercept = max.nUMI.thr), colour = "red", linetype = 2) +
+  geom_vline(aes(xintercept = max.nCount_RNA.thr), colour = "red", linetype = 2) +
   geom_abline(intercept = lm.model$coefficients[1] - 0.09 , slope = lm.model$coefficients[2], color="orange") +
   annotate(geom = "text", label = paste0(dim(Cell.QC.Stat)[1], " QC passed cells"), x = 4, y = 3.8)
 
@@ -201,11 +195,11 @@ ggMarginal(p2, type = "histogram", fill="lightgrey")
 
 ```{r}
 # Cells to exclude lie below an intercept offset of -0.09
-Cell.QC.Stat$valideCells <- log10(Cell.QC.Stat$nGene) > (log10(Cell.QC.Stat$nUMI) * lm.model$coefficients[2] + (lm.model$coefficients[1] - 0.09))
+Cell.QC.Stat$valideCells <- log10(Cell.QC.Stat$nFeature_RNA) > (log10(Cell.QC.Stat$nCount_RNA) * lm.model$coefficients[2] + (lm.model$coefficients[1] - 0.09))
 ```
 
 ```{r fig.dim=c(4, 4)}
-p3 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+p3 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) +
   geom_point(aes(colour = valideCells)) +
   geom_smooth(method="lm") +
   geom_abline(intercept = lm.model$coefficients[1] - 0.09 , slope = lm.model$coefficients[2], color="orange") + 
@@ -224,16 +218,16 @@ Cell.QC.Stat <- Cell.QC.Stat %>% filter(valideCells)
 ##### Keep only the valid cells in the Seurat object
 
 ```{r}
-Raw.data <- SubsetData(Raw.data, cells.use = Cell.QC.Stat$Barcodes , subset.raw = T,  do.clean = F)
+Raw.data <- subset(Raw.data, cells = Cell.QC.Stat$Barcodes)
 ```
 
 ```{r fig.dim=c(4, 4)}
 # Plot final QC metrics
-VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
+VlnPlot(object = Raw.data, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"), ncol = 2 )
 ```
 
 ```{r fig.dim=c(4, 4)}
-p1 <- ggplot(Raw.data@meta.data, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+p1 <- ggplot(Raw.data@meta.data, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) + geom_point() + geom_smooth(method="lm")
 ggMarginal(p1, type = "histogram", fill="lightgrey")
 ```
 
@@ -251,7 +245,7 @@ Export raw count matrix as input to Scrublet
 #Export filtered matrix
 dir.create("../../Scrublet_inputs")
 
-exprData <- Matrix(as.matrix(Raw.data@raw.data), sparse = TRUE)
+exprData <- Matrix(as.matrix(GetAssayData(object = Raw.data, slot = "counts")), sparse = TRUE)
 writeMM(exprData, "../../Scrublet_inputs/matrix1.mtx")
 ```
 
@@ -286,7 +280,7 @@ Raw.data@meta.data$Doubletscore <- py$doublet_scores
 
 # Plot doublet score
 ggplot(Raw.data@meta.data, aes(x = Doubletscore, stat(ndensity))) +
-  geom_histogram(bins = 200, colour ="lightgrey")+
+  geom_histogram(bins = 200, colour ="lightgrey") +
   geom_vline(xintercept = 0.20, colour = "red", linetype = 2)
 
 ```
@@ -303,7 +297,7 @@ table(Raw.data@meta.data$Predicted_doublets)
 #Remove Scrublet inferred doublets
 Valid.Cells <- rownames(Raw.data@meta.data[Raw.data@meta.data$Predicted_doublets == "Singlet",])
 
-QC.data.1 <- SubsetData(Raw.data,  cells.use = Valid.Cells, subset.raw = T, do.clean = F)
+QC.data.1 <- subset(Raw.data,  cells = Valid.Cells)
 ```
 
 ```{r}
@@ -317,63 +311,56 @@ rm(list = ls()[!ls() %in% "QC.data.1"])
 ```{r}
 Countdata <- Read10X(data.dir = "../../RawData/Hem_2_filtered_feature_bc_matrix/")
 
-Raw.data <- CreateSeuratObject(raw.data = Countdata,
+Raw.data <- CreateSeuratObject(counts = Countdata, 
                               min.cells = 3,
-                              min.genes = 800,
+                              min.features = 800,
                               project = "Hem2") ; rm(Countdata)
 
 Raw.data@meta.data$Barcodes <- rownames(Raw.data@meta.data)
 
-dim(Raw.data@data)
+Raw.data
 ```
 
 ## Compute mito and ribo gene content per cell
 
 ```{r}
-mito.genes <- grep(pattern = "^mt-", x = rownames(x = Raw.data@data), value = TRUE)
-percent.mito <- Matrix::colSums(Raw.data@raw.data[mito.genes, ])/Matrix::colSums(Raw.data@raw.data)
-Raw.data <- AddMetaData(object = Raw.data, metadata = percent.mito, col.name = "percent.mito")
+Raw.data$percent.mito <- PercentageFeatureSet(Raw.data, pattern = "^mt-")
+Raw.data$percent.ribo <- PercentageFeatureSet(Raw.data, pattern = "(^Rpl|^Rps|^Mrp)")
 
-ribo.genes <- grep(pattern = "(^Rpl|^Rps|^Mrp)", x = rownames(x = Raw.data@data), value = TRUE)
-percent.ribo <- Matrix::colSums(Raw.data@raw.data[ribo.genes, ])/Matrix::colSums(Raw.data@raw.data)
-Raw.data <- AddMetaData(object = Raw.data, metadata = percent.ribo, col.name = "percent.ribo")
-
-rm(mito.genes, percent.mito,ribo.genes,percent.ribo)
 ```
 
 ```{r fig.dim=c(5, 4)}
-VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
+VlnPlot(object = Raw.data, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"), ncol = 2 )
 ```
 
-## Inspect cell based on relation between nUMI and nGene detected
+## Inspect cell based on relation between nCount_RNA and nFeature_RNA detected
 
 ```{r fig.dim=c(6, 3.5)}
-# Relation between nUMI and nGene detected
+# Relation between nCount_RNA and nFeature_RNA detected
 Cell.QC.Stat <- Raw.data@meta.data
 Cell.QC.Stat$Barcodes <- rownames(Cell.QC.Stat)
 
-p1 <- ggplot(Cell.QC.Stat, aes(x=nUMI, y=nGene)) + geom_point() + geom_smooth(method="lm")
+p1 <- ggplot(Cell.QC.Stat, aes(x=nCount_RNA, y=nFeature_RNA)) + geom_point() + geom_smooth(method="lm")
 p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
 
-p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) + geom_point() + geom_smooth(method="lm")
 p2 <- ggMarginal(p2, type = "histogram", fill="lightgrey")
 
 plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(1, 1)) ; rm(p1,p2)
 ```
 
-Cells with deviating nGene/nUMI ratio display an [Erythrocyte signature](http://mousebrain.org/development/celltypes.html)
+Cells with deviating nFeature_RNA/nCount_RNA ratio display an [Erythrocyte signature](http://mousebrain.org/development/celltypes.html)
 
 ```{r}
 genes.list <- list(c("Hbb-bt", "Hbq1a", "Isg20", "Fech", "Snca", "Rec114"))
-enrich.name <- "Erythrocyte.signature"
 Raw.data <- AddModuleScore(Raw.data,
-                           genes.list = genes.list,
-                           genes.pool = NULL,
+                           features = genes.list,
+                           pool = NULL,
                            n.bin = 5,
                            seed.use = 1,
                            ctrl.size = length(genes.list),
                            use.k = FALSE,
-                           enrich.name = enrich.name,
+                           name = "Erythrocyte.signature",
                            random.seed = 1)
 
 Cell.QC.Stat$Erythrocyte.signature <- Raw.data@meta.data$Erythrocyte.signature1
@@ -382,7 +369,7 @@ Cell.QC.Stat$Erythrocyte.signature <- Raw.data@meta.data$Erythrocyte.signature1
 ```{r fig.dim=c(4, 4)}
 gradient <- colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)
 
-p1 <- ggplot(Cell.QC.Stat, aes(x= log10(nUMI), y= log10(nGene))) +
+p1 <- ggplot(Cell.QC.Stat, aes(x= log10(nCount_RNA), y= log10(nFeature_RNA))) +
       geom_point(aes(color= Erythrocyte.signature))  + 
       scale_color_gradientn(colours=rev(gradient), name='Erythrocyte score') +
       geom_smooth(method="lm")
@@ -404,13 +391,13 @@ min.mito.thr <- median(Cell.QC.Stat$percent.mito) - 3*mad(Cell.QC.Stat$percent.m
 ```
 
 ```{r fig.dim=c(4, 4)}
-p1 <- ggplot(Cell.QC.Stat, aes(x=nGene, y=percent.mito)) +
+p1 <- ggplot(Cell.QC.Stat, aes(x=nFeature_RNA, y=percent.mito)) +
   geom_point() +
   geom_hline(aes(yintercept = max.mito.thr), colour = "red", linetype = 2) +
   geom_hline(aes(yintercept = min.mito.thr), colour = "red", linetype = 2) +
   annotate(geom = "text", label = paste0(as.numeric(table(Cell.QC.Stat$percent.mito > max.mito.thr | Cell.QC.Stat$percent.mito < min.mito.thr)[2])," cells removed\n",
                                          as.numeric(table(Cell.QC.Stat$percent.mito > max.mito.thr | Cell.QC.Stat$percent.mito < min.mito.thr)[1])," cells remain"),
-           x = 6000, y = 0.4)
+           x = 6000, y = 40)
 
 ggMarginal(p1, type = "histogram", fill="lightgrey", bins=100) 
 ```
@@ -428,41 +415,41 @@ We filter cells which are likely to be doublet based on their higher content of 
 
 ```{r}
 # Set low and hight thresholds on the number of detected genes
-min.Genes.thr <- median(log10(Cell.QC.Stat$nGene)) - 3*mad(log10(Cell.QC.Stat$nGene))
-max.Genes.thr <- median(log10(Cell.QC.Stat$nGene)) + 3*mad(log10(Cell.QC.Stat$nGene))
+min.Genes.thr <- median(log10(Cell.QC.Stat$nFeature_RNA)) - 3*mad(log10(Cell.QC.Stat$nFeature_RNA))
+max.Genes.thr <- median(log10(Cell.QC.Stat$nFeature_RNA)) + 3*mad(log10(Cell.QC.Stat$nFeature_RNA))
 
 # Set hight threshold on the number of transcripts
-max.nUMI.thr <- median(log10(Cell.QC.Stat$nUMI)) + 3*mad(log10(Cell.QC.Stat$nUMI))
+max.nCount_RNA.thr <- median(log10(Cell.QC.Stat$nCount_RNA)) + 3*mad(log10(Cell.QC.Stat$nCount_RNA))
 ```
 
 ```{r fig.dim=c(4, 4)}
 # Gene/UMI scatter plot before filtering
-p1 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+p1 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) +
   geom_point() +
   geom_smooth(method="lm") +
   geom_hline(aes(yintercept = min.Genes.thr), colour = "green", linetype = 2) +
   geom_hline(aes(yintercept = max.Genes.thr), colour = "green", linetype = 2) +
-  geom_vline(aes(xintercept = max.nUMI.thr), colour = "red", linetype = 2)
+  geom_vline(aes(xintercept = max.nCount_RNA.thr), colour = "red", linetype = 2)
 
 ggMarginal(p1, type = "histogram", fill="lightgrey")
 ```
 
 ```{r}
 # Filter cells base on both metrics
-Cell.QC.Stat <- Cell.QC.Stat %>% filter(log10(nGene) > min.Genes.thr) %>% filter(log10(nUMI) < max.nUMI.thr)
+Cell.QC.Stat <- Cell.QC.Stat %>% filter(log10(nFeature_RNA) > min.Genes.thr) %>% filter(log10(nCount_RNA) < max.nCount_RNA.thr)
 ```
 
-#### Filter cells below the main population nUMI/nGene relationship
+#### Filter cells below the main population nCount_RNA/nFeature_RNA relationship
 
 ```{r fig.dim=c(4, 4)}
-lm.model <- lm(data = Cell.QC.Stat, formula = log10(nGene) ~ log10(nUMI))
+lm.model <- lm(data = Cell.QC.Stat, formula = log10(nFeature_RNA) ~ log10(nCount_RNA))
 
-p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) +
   geom_point() +
   geom_smooth(method="lm") +
   geom_hline(aes(yintercept = min.Genes.thr), colour = "green", linetype = 2) +
   geom_hline(aes(yintercept = max.Genes.thr), colour = "green", linetype = 2) +
-  geom_vline(aes(xintercept = max.nUMI.thr), colour = "red", linetype = 2) +
+  geom_vline(aes(xintercept = max.nCount_RNA.thr), colour = "red", linetype = 2) +
   geom_abline(intercept = lm.model$coefficients[1] - 0.09 , slope = lm.model$coefficients[2], color="orange") +
   annotate(geom = "text", label = paste0(dim(Cell.QC.Stat)[1], " QC passed cells"), x = 4, y = 3.8)
 
@@ -471,11 +458,11 @@ ggMarginal(p2, type = "histogram", fill="lightgrey")
 
 ```{r}
 # Cells to exclude lie below an intercept offset of -0.09
-Cell.QC.Stat$valideCells <- log10(Cell.QC.Stat$nGene) > (log10(Cell.QC.Stat$nUMI) * lm.model$coefficients[2] + (lm.model$coefficients[1] - 0.09))
+Cell.QC.Stat$valideCells <- log10(Cell.QC.Stat$nFeature_RNA) > (log10(Cell.QC.Stat$nCount_RNA) * lm.model$coefficients[2] + (lm.model$coefficients[1] - 0.09))
 ```
 
 ```{r fig.dim=c(4, 4)}
-p3 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) +
+p3 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) +
   geom_point(aes(colour = valideCells)) +
   geom_smooth(method="lm") +
   geom_abline(intercept = lm.model$coefficients[1] - 0.09 , slope = lm.model$coefficients[2], color="orange") + 
@@ -494,21 +481,21 @@ Cell.QC.Stat <- Cell.QC.Stat %>% filter(valideCells)
 ##### Keep only the valid cells in the Seurat object
 
 ```{r}
-Raw.data <- SubsetData(Raw.data, cells.use = Cell.QC.Stat$Barcodes , subset.raw = T,  do.clean = F)
+Raw.data <- subset(Raw.data, cells = Cell.QC.Stat$Barcodes)
 ```
 
 ```{r fig.dim=c(4, 4)}
 # Plot final QC metrics
-VlnPlot(object = Raw.data, features.plot = c("nGene","nUMI", "percent.mito", "percent.ribo"), nCol = 2 )
+VlnPlot(object = Raw.data, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"), ncol = 2 )
 ```
 
 ```{r fig.dim=c(4, 4)}
-p1 <- ggplot(Raw.data@meta.data, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+p1 <- ggplot(Raw.data@meta.data, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) + geom_point() + geom_smooth(method="lm")
 ggMarginal(p1, type = "histogram", fill="lightgrey")
 ```
 
 ```{r}
-rm(list = ls()[!ls() %in% c("Raw.data", "QC.data.1")])
+rm(list = ls()[!ls() %in% c("Raw.data","QC.data.1")])
 ```
 
 ## Use Scrublet to detect obvious doublets
@@ -519,7 +506,7 @@ Export raw count matrix as input to Scrublet
 
 ```{r message=FALSE, warning=FALSE}
 #Export filtered matrix
-exprData <- Matrix(as.matrix(Raw.data@raw.data), sparse = TRUE)
+exprData <- Matrix(as.matrix(GetAssayData(object = Raw.data, slot = "counts")), sparse = TRUE)
 writeMM(exprData, "../../Scrublet_inputs/matrix2.mtx")
 ```
 
@@ -571,7 +558,7 @@ table(Raw.data@meta.data$Predicted_doublets)
 #Remove Scrublet inferred doublets
 Valid.Cells <- rownames(Raw.data@meta.data[Raw.data@meta.data$Predicted_doublets == "Singlet",])
 
-QC.data.2 <- SubsetData(Raw.data,  cells.use = Valid.Cells, subset.raw = T, do.clean = F)
+QC.data.2 <- subset(Raw.data,  cells= Valid.Cells)
 ```
 
 ```{r}
@@ -581,10 +568,8 @@ rm(list = ls()[!ls() %in% c("QC.data.1", "QC.data.2")])
 # Merge the two libraries
 
 ```{r}
-Hem.data <- MergeSeurat(QC.data.1, QC.data.2,
-                        do.normalize = F,
-                        add.cell.id1 = "Hem1",
-                        add.cell.id2 = "Hem2")
+Hem.data <- merge(QC.data.1, QC.data.2,
+                  add.cell.ids = c("Hem1", "Hem2"))
 
 Hem.data@meta.data$Barcodes <- rownames(Hem.data@meta.data)
 ```
@@ -594,10 +579,10 @@ Hem.data@meta.data$Barcodes <- rownames(Hem.data@meta.data)
 Cell.QC.Stat <- Hem.data@meta.data
 Cell.QC.Stat$Barcodes <- rownames(Cell.QC.Stat)
 
-p1 <- ggplot(Cell.QC.Stat, aes(x=nUMI, y=nGene)) + geom_point() + geom_smooth(method="lm")
+p1 <- ggplot(Cell.QC.Stat, aes(x=nCount_RNA, y=nFeature_RNA)) + geom_point() + geom_smooth(method="lm")
 p1 <- ggMarginal(p1, type = "histogram", fill="lightgrey")
 
-p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nUMI), y=log10(nGene))) + geom_point() + geom_smooth(method="lm")
+p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) + geom_point() + geom_smooth(method="lm")
 p2 <- ggMarginal(p2, type = "histogram", fill="lightgrey")
 
 plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(1, 1)) ; rm(p1,p2)
@@ -607,24 +592,15 @@ plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(1, 1)) ; rm(
 rm(list = ls()[!ls() %in% "Hem.data"])
 ```
 
-## Filter gene expression matrix
-
-```{r}
-# Filter genes expressed by less than 3 cells
-num.cells <- Matrix::rowSums(Hem.data@data > 0)
-genes.use <- names(x = num.cells[which(x = num.cells >= 3)])
-Hem.data@raw.data <- Hem.data@raw.data[genes.use, ]
-Hem.data@data <- Hem.data@data[genes.use, ]
-```
 
 ```{r}
 # log-normalize the gene expression matrix
-Hem.data<- NormalizeData(object = Hem.data,
-                          normalization.method = "LogNormalize", 
-                          scale.factor = round(median(Hem.data@meta.data$nUMI)),
-                          display.progress = F)
-```
+Hem.data <- NormalizeData(Hem.data,
+                          normalization.method = "LogNormalize",
+                          scale.factor = round(median(Hem.data@meta.data$nCount_RNA)))
 
+```
+ 
 ## Generate SRING dimentionality reduction
 
 ```{r}
@@ -633,12 +609,14 @@ dir.create("../../SpringCoordinates")
 
 ```{r}
 # Export raw expression matrix and gene list to regenerate a spring plot
-exprData <- Matrix(as.matrix(Hem.data@raw.data), sparse = TRUE)
+Counts <- GetAssayData(object = Hem.data, slot = "counts")
+
+exprData <- Matrix(as.matrix(Counts), sparse = TRUE)
 writeMM(exprData, "../../SpringCoordinates/ExprData.mtx")
 ```
 
 ```{r}
-Genelist <- row.names(Hem.data@raw.data)
+Genelist <- row.names(Counts)
 write.table(Genelist, "../../SpringCoordinates/Genelist.csv", sep="\t", col.names = F, row.names = F)
 ```
 
@@ -782,10 +760,10 @@ cowplot::plot_grid(plotlist = plot[1:10], ncol = 5)
 ## Early pallial neurons
 
 ```{r}
-ENgenes <- c("Mfap4", "Nhlh2", "Nhlh1", "Ppp1r14a", "Nav1",
+EnFeature_RNAs <- c("Mfap4", "Nhlh2", "Nhlh1", "Ppp1r14a", "Nav1",
              "Neurod1", "Sorl1", "Svip", "Cxcl12", "Tenm4",
              "Dll3", "Rgmb", "Cntn2", "Vat1")
-genes.list <- list(ENgenes)
+genes.list <- list(EnFeature_RNAs)
 enrich.name <- "EN_signature"
 Hem.data <- AddModuleScore(Hem.data,
                                   genes.list = genes.list,
@@ -800,7 +778,7 @@ Hem.data <- AddModuleScore(Hem.data,
 
 ```{r fig.show='hide' }
 plot <- FeaturePlot(object = Hem.data,
-                    features.plot = ENgenes,
+                    features.plot = EnFeature_RNAs,
                     cols.use = c("grey90", brewer.pal(9,"YlGnBu")),
                     reduction.use = "spring",
                     no.legend = T,
@@ -821,9 +799,9 @@ cowplot::plot_grid(plotlist = plot[1:14], ncol = 5)
 ## Late pallial neurons
 
 ```{r}
-LNgenes <- c("Snhg11", "Pcsk1n", "Mapt", "Ina", "Stmn4",
+LnFeature_RNAs <- c("Snhg11", "Pcsk1n", "Mapt", "Ina", "Stmn4",
              "Gap43", "Tubb2a", "Ly6h","Ptprd", "Mef2c")
-genes.list <- list(LNgenes)
+genes.list <- list(LnFeature_RNAs)
 enrich.name <- "LN_signature"
 Hem.data <- AddModuleScore(Hem.data,
                                   genes.list = genes.list,
@@ -838,7 +816,7 @@ Hem.data <- AddModuleScore(Hem.data,
 
 ```{r fig.show='hide' }
 plot <- FeaturePlot(object = Hem.data,
-                    features.plot = LNgenes,
+                    features.plot = LnFeature_RNAs,
                     cols.use = c("grey90", brewer.pal(9,"YlGnBu")),
                     reduction.use = "spring",
                     no.legend = T,
