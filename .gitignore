@@ -2,7 +2,8 @@
 
 hemCR.Rproj
 
-*.html
+Counts.csv
+Hem_metadata.csv
 
 *_cache
 *_files
