@@ -22,6 +22,7 @@ output:
 library(Seurat)
 library(sctransform)
 library(dplyr)
+library(wesanderson)
 ```
 
 # load counts and metadata
@@ -45,6 +46,8 @@ Hem.data <- CreateSeuratObject(counts = counts,
 
 Hem.data@assays$RNA@counts[1:5,1:5]
 head(Hem.data@meta.data)
+
+rm(list = ls()[!ls() %in% "Hem.data"])
 ```
 # Create new Spring coordinates slot
 
@@ -70,10 +73,37 @@ Hem.data$CC.Difference <- Hem.data$S.Score - Hem.data$G2M.Score
 ```{r SCTransform}
 Hem.data <- SCTransform(Hem.data,
                         method = "glmGamPoi",
-                        vars.to.regress = "percent.mt",
+                        vars.to.regress = c("percent.mito", "percent.ribo", "CC.Difference"),
                         verbose = T)
 ```
 
+# Run PCA and broad clustering
+
+```{r PCA and Custering, class.output="scroll-100"}
+Hem.data <- RunPCA(Hem.data, verbose = FALSE)
+
+Hem.data <- FindNeighbors(Hem.data,
+                          dims = 1:20,
+                          k.param = 8)
+
+Hem.data <- FindClusters(Hem.data, resolution = 0.1)
+```
+
+```{r}
+DimPlot(Hem.data,
+        reduction = "spring",
+        cols = c(wes_palette("FantasticFox1"),"grey90"),
+        pt.size = 0.5) & NoAxes()
+```
+
+
+```{r fig.dim=c(10, 5)}
+DimPlot(Hem.data,
+        reduction = "spring",
+        pt.size = 0.5,
+        cols = c(wes_palette("FantasticFox1"),"grey90"),
+        split.by = 'ident') + NoLegend() & NoAxes()
+```
 
 # Save the object
 
