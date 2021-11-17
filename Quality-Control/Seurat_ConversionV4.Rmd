@@ -1,0 +1,72 @@
+---
+title: "Create Seurat V4 object from QC filtered cells"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(dplyr)
+```
+
+# load counts and metadata
+
+```{r}
+counts <- as.matrix(read.table("Counts.csv", sep = ";", header = T, row.names = 1))
+
+counts[1:5, 1:5]
+```
+
+```{r}
+meta.data <- read.table("Hem_metadata.csv", sep= ";", header= T)
+
+meta.data[1:5, 1:5]
+```
+# Create a seurat V4 object
+
+```{r}
+Hem.data <- CreateSeuratObject(counts = counts,
+                               meta.data = meta.data)
+
+Hem.data@assays$RNA@counts[1:5,1:5]
+head(Hem.data@meta.data)
+```
+# Create new Spring coordinates slot
+
+```{r}
+spring <- as.matrix(Hem.data@meta.data %>% select("Spring_1", "Spring_2"))
+  
+Hem.data[["spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_", assay = DefaultAssay(Hem.data))
+```
+
+```{r}
+DimPlot(Hem.data, reduction = "spring", pt.size = 0.5)
+```
+```{r}
+saveRDS(Hem.data, "../QC.filtered.cells.RDS")
+```
+
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
+
