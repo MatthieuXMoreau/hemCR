@@ -1,0 +1,93 @@
+---
+title: "Cell quality control"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat, lib.loc = "~/R/x86_64-conda_cos6-linux-gnu-library/4.0")
+library(Matrix)
+library(RColorBrewer)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# load the dataset
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+```
+
+```{r}
+DimPlot(Hem.data,
+        reduction.use = "spring",
+        group.by = "Phase",
+        cols.use = wes_palette("GrandBudapest1", 3, type = "discrete")[3:1],
+        dim.1 = 1, 
+        dim.2 = 2,
+        do.label=T,
+        label.size = 4,
+        no.legend = F )
+```
+
+
+```{r}
+FeaturePlot(object = Hem.data,
+            features.plot = c("AP_signature1", "BP_signature1",
+                              "EN_signature1", "LN_signature1",
+                              "Meninges_signature1","Immune_signature1"),
+            cols.use = rev(brewer.pal(10,"Spectral")),
+            reduction.use = "spring",
+            no.legend = T,
+            overlay = F,
+            dark.theme = F,
+            no.axes = T)
+```
+# Export Count matrix, metadata for Seurat V4 conversion
+
+We add Spring coordinates to the metadata 
+
+```{r}
+Hem.data@meta.data$Spring_1 <- Hem.data@dr$spring@cell.embeddings[,1]
+Hem.data@meta.data$Spring_2 <- Hem.data@dr$spring@cell.embeddings[,2]
+```
+
+```{r}
+col_order <- c("Barcodes","orig.ident", "nGene",  "nUMI", "percent.mito", "percent.ribo", "Doubletscore", "Predicted_doublets",
+               "Spring_1", "Spring_2", "Erythrocyte.signature1", "S.Score", "G2M.Score", "Phase",
+               "AP_signature1", "BP_signature1", "EN_signature1", "LN_signature1", "Immune_signature1", "Meninges_signature1")
+
+write.table(Hem.data@meta.data[,col_order], "Hem_metadata.csv", sep = ";", quote = F)
+```
+
+```{r}
+write.table(as.matrix(Hem.data@raw.data), "Counts.csv", sep = ";", row.names = T, col.names = T, quote = F) 
+```
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
+
