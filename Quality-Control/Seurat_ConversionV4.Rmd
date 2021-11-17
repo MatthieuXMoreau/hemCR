@@ -20,6 +20,7 @@ output:
 
 ```{r message=FALSE, warning=FALSE}
 library(Seurat)
+library(sctransform)
 library(dplyr)
 ```
 
@@ -38,7 +39,7 @@ meta.data[1:5, 1:5]
 ```
 # Create a seurat V4 object
 
-```{r}
+```{r Create SeuratV4}
 Hem.data <- CreateSeuratObject(counts = counts,
                                meta.data = meta.data)
 
@@ -47,7 +48,7 @@ head(Hem.data@meta.data)
 ```
 # Create new Spring coordinates slot
 
-```{r}
+```{r Spring}
 spring <- as.matrix(Hem.data@meta.data %>% select("Spring_1", "Spring_2"))
   
 Hem.data[["spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_", assay = DefaultAssay(Hem.data))
@@ -56,7 +57,27 @@ Hem.data[["spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_
 ```{r}
 DimPlot(Hem.data, reduction = "spring", pt.size = 0.5)
 ```
+# Sctransform based normalization
+
+While scaling we regressed sources of variation associated with cell cycle and cell quality metrics
+
 ```{r}
+# Cell cycle difference scoring
+Hem.data$CC.Difference <- Hem.data$S.Score - Hem.data$G2M.Score
+```
+
+
+```{r SCTransform}
+Hem.data <- SCTransform(Hem.data,
+                        method = "glmGamPoi",
+                        vars.to.regress = "percent.mt",
+                        verbose = T)
+```
+
+
+# Save the object
+
+```{r Save RDS}
 saveRDS(Hem.data, "../QC.filtered.cells.RDS")
 ```
 
