@@ -1,5 +1,5 @@
 ---
-title: "Analysis of the progenitors diverity"
+title: "Analysis of progenitors' diverity"
 author:
    - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -43,61 +43,52 @@ theme_set(theme_classic())
 Hem.data <- readRDS("../QC.filtered.cells.RDS")
 ```
 
+```{r}
+DimPlot(Hem.data,
+        reduction = "spring",
+        cols = c(wes_palette("FantasticFox1"),"grey90"),
+        pt.size = 0.5) & NoAxes()
+```
+
+
 # Extract the apical progenitors 
 
 ```{r}
 # Extract apical progenitors 
-barcodes <- Hem.data@meta.data %>% filter(kmeanClust %in% c("Clust.1", "Clust.3")) %>% pull(Barcodes)
-Progenitors.data <-  SubsetData(Hem.data, cells.use = barcodes , subset.raw = T,  do.clean = F)
+Progenitors.data <-  subset(Hem.data, idents = c(0,1,3))
 
 DimPlot(Progenitors.data,
-        group.by = "kmeanClust",
-        reduction.use = "spring",
-        cols.use = c("#5ab793", "#e7823a"),
-        dim.1 = 1,
-        dim.2 = 2,
-        do.label=T,
-        label.size = 4,
-        no.legend = F)
+        reduction = "spring",
+        pt.size = 0.5,
+        cols = c(wes_palette("FantasticFox1")[c(1,2,4)]),
+        split.by = 'ident') + NoLegend() & NoAxes()
+
+rm(Hem.data) ; gc()
 ```
+
 # Filter gene counts matrix
 
+For this analysis we will keep only genes detected in at least 20 over 12325 cells 
+
 ```{r}
-# Remove non expressed genes
-num.cells <- Matrix::rowSums(Progenitors.data@data > 0)
+progenitors.counts <- GetAssayData(object = Progenitors.data[["RNA"]], slot = "counts")
+dim(progenitors.counts)
+
+num.cells <- Matrix::rowSums(progenitors.counts > 0)
 genes.use <- names(x = num.cells[which(x = num.cells >= 20)])
-Progenitors.data@raw.data <- Progenitors.data@raw.data[genes.use, ]
-Progenitors.data@data <- Progenitors.data@data[genes.use, ]
+progenitors.counts <- progenitors.counts[genes.use, ]
 
-# Normalize and Scale the data
-Progenitors.data <- NormalizeData(object = Progenitors.data,
-                                  normalization.method = "LogNormalize", 
-                                  scale.factor = round(median(Progenitors.data@meta.data$nUMI)),
-                                  display.progress = F)
-
-Progenitors.data <- FindVariableGenes(object = Progenitors.data,
-                                      mean.function = ExpMean,
-                                      dispersion.function = LogVMR,
-                                      x.low.cutoff = 0.0125,
-                                      x.high.cutoff = 3,
-                                      y.cutoff = 1, do.plot = F,
-                                      display.progress = F)
-
-Progenitors.data <- ScaleData(object = Progenitors.data, vars.to.regress = c("CC.Difference","percent.mito", "nUMI"), display.progress = F)
+dim(progenitors.counts)
 ```
 
 # Topic modeling
 
 ## Fit topic model
 
-```{r}
-counts <- t(Progenitors.data@raw.data)
-```
-
-```{r cache=TRUE} 
+```{r fit_topic_model ,cache=TRUE, class.output="scroll-100"} 
 set.seed(1)
 
-fit <- fit_topic_model(counts,
+fit <- fit_topic_model(t(progenitors.counts),
                        k = 10,
                        numiter.main = 300,
                        numiter.refine = 300,
