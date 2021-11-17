@@ -46,34 +46,6 @@ Hem.data <- readRDS("../QC.filtered.cells.RDS")
 # Extract the apical progenitors 
 
 ```{r}
-set.seed(100)
-
-# K-means clustering based on AP, BP scores across cells
-cl <- kmeans(cbind(Hem.data@meta.data$AP_signature1, Hem.data@meta.data$BP_signature1, Hem.data@meta.data$EN_signature1,
-                   Hem.data@meta.data$Meninges_signature1, Hem.data@meta.data$Immune_signature1), 5)
-
-Hem.data@meta.data$kmeanClust <- paste0("Clust.",cl$cluster)
-```
-
-
-```{r}
-p1 <- ggplot(Hem.data@meta.data, aes(x=AP_signature1, y=BP_signature1, colour = kmeanClust)) +
-      scale_color_manual(values= c("grey90","#d14c8d", "#4cabdc", "#5ab793", "#046c9a", "#e7823a")) +
-      geom_point()
-
-ggMarginal(p1, type = "histogram", fill="lightgrey") ; rm(p1)
-```
-
-```{r message=FALSE, warning=FALSE}
-DimPlot(Hem.data,
-        group.by = "kmeanClust",
-        reduction = "spring",
-        cols = c("grey90","#d14c8d", "#4cabdc", "#5ab793", "#046c9a", "#e7823a"),
-        pt.size = 1,
-        split.by = 'kmeanClust') & NoAxes()
-```
-
-```{r}
 # Extract apical progenitors 
 barcodes <- Hem.data@meta.data %>% filter(kmeanClust %in% c("Clust.1", "Clust.3")) %>% pull(Barcodes)
 Progenitors.data <-  SubsetData(Hem.data, cells.use = barcodes , subset.raw = T,  do.clean = F)
