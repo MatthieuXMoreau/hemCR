@@ -70,7 +70,7 @@ Hem.data$CC.Difference <- Hem.data$S.Score - Hem.data$G2M.Score
 ```
 
 
-```{r SCTransform}
+```{r SCTransform, class.output="scroll-100"}
 Hem.data <- SCTransform(Hem.data,
                         method = "glmGamPoi",
                         vars.to.regress = c("percent.mito", "percent.ribo", "CC.Difference"),

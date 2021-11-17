@@ -42,3 +42,8 @@ p {
   font-size: 16px;
 }
 
+.scroll-100 {
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: inherit;
+}
