@@ -25,6 +25,7 @@ knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=
 ```{r message=FALSE, warning=FALSE}
 library(Seurat)
 library(fastTopics)
+library(RcppParallel)
 library(Matrix)
 library(dplyr)
 library(RColorBrewer)
@@ -90,8 +91,8 @@ set.seed(1)
 
 fit <- fit_topic_model(t(progenitors.counts),
                        k = 10,
-                       numiter.main = 300,
-                       numiter.refine = 300,
+                       numiter.main = 150,
+                       numiter.refine = 150,
                        method.main = "em",
                        method.refine = "scd",
                        control.main = list(numiter = 4),
@@ -113,49 +114,49 @@ Progenitors.data@meta.data <- cbind(Progenitors.data@meta.data, fit$L)
 ```
 
 ```{r fig.dim=c(6, 9)}
-plot <- FeaturePlot(object = Progenitors.data,
-                    features.plot = paste0("k", 1:10),
-                    cols.use = rev(brewer.pal(10,"Spectral")),
-                    reduction.use = "spring",
-                    no.legend = T,
-                    overlay = F,
-                    dark.theme = F,
-                    do.return =T,
-                    no.axes = T)
+FeaturePlot(object = Progenitors.data,
+                    features = paste0("k", 1:10),
+                    cols = rev(brewer.pal(10,"Spectral")),
+                    reduction = "spring") & NoLegend() & NoAxes()
 
-for (i in 1:length(plot)){
-  plot[[i]]$data <- plot[[i]]$data[order(plot[[i]]$data$gene),]
-}
+```
+```{r fig.dim=c(6, 9)}
+FeaturePlot(object = Progenitors.data,
+                    features = paste0("k", c(9,2,10,5,6)),
+                    cols = rev(brewer.pal(10,"Spectral")),
+                    reduction = "spring",
+                    order = T) & NoLegend() & NoAxes()
+
 ```
 
-```{r fig.dim=c(6, 5)}
-cowplot::plot_grid(plotlist = plot[c(6,2,7,9)], ncol = 2)
-```
 ## Cluster Progenitors
 
 ```{r}
 set.seed(1)
-pca <- prcomp(fit$L[,c(6,2,9,7)])$x
-clusters <- cluster::pam(pca, k = 4)$clustering
+pca <- prcomp(fit$L[,c(9,2,10,5,6)])$x
+clusters <- cluster::pam(pca, k = 6)$clustering
 ```
 
 
 ```{r}
 Progenitors.data@meta.data$TopicsKmeans <- as.numeric(clusters)
 
-DimPlot(Progenitors.data,
-        group.by = "TopicsKmeans",
-        reduction.use = "spring",
-        cols.use = c("#4cabdc","#046c9a", "#5ab793", "#e7823a","#4cabdc"),
-        dim.1 = 1,
-        dim.2 = 2,
-        do.label=T,
-        label.size = 4,
-        no.legend = F)
+FeaturePlot(object = Progenitors.data,
+            features = "TopicsKmeans",
+            cols = c(wes_palette("FantasticFox1"),"grey90", "grey40"),
+            reduction = "spring") & NoLegend() & NoAxes()
 ```
-```{r}
 
+
+```{r}
+DimPlot(Progenitors.data,
+        reduction = "spring",
+        pt.size = 0.5,
+        cols = c(wes_palette("FantasticFox1"),"grey90"),
+        split.by = 'ident') + NoLegend() & NoAxes()
 ```
+
+
 
 
 # Session Info
