@@ -47,7 +47,7 @@ Hem.data <- readRDS("../QC.filtered.cells.RDS")
 ```{r}
 DimPlot(Hem.data,
         reduction = "spring",
-        cols = c(wes_palette("FantasticFox1"),"grey90"),
+        cols = c(wes_palette("FantasticFox1"),"grey60"),
         pt.size = 0.5) & NoAxes()
 ```
 
@@ -80,6 +80,8 @@ genes.use <- names(x = num.cells[which(x = num.cells >= 20)])
 progenitors.counts <- progenitors.counts[genes.use, ]
 
 dim(progenitors.counts)
+
+gc()
 ```
 
 # Topic modeling
@@ -90,22 +92,15 @@ dim(progenitors.counts)
 set.seed(1)
 
 fit <- fit_topic_model(t(progenitors.counts),
-                       k = 10,
-                       numiter.main = 150,
-                       numiter.refine = 150,
+                       k = 15,
+                       numiter.main = 200,
+                       numiter.refine = 200,
                        method.main = "em",
                        method.refine = "scd",
-                       control.main = list(numiter = 4),
-                       control.refine = list(numiter = 4, extrapolate = TRUE),
+                       control.main = list(numiter = 4, nc= 6),
+                       control.refine = list(numiter = 4, nc= 6, extrapolate = TRUE),
                        verbose = "progressbar")
 ```
-
-```{r}
-plot_progress(fit,x = "iter",add.point.every = 10,
-                          colors = "black") +
-  theme_cowplot(font_size = 10)
-```
-
 ## Explore the different topics
 
 ```{r}
@@ -115,14 +110,14 @@ Progenitors.data@meta.data <- cbind(Progenitors.data@meta.data, fit$L)
 
 ```{r fig.dim=c(6, 9)}
 FeaturePlot(object = Progenitors.data,
-                    features = paste0("k", 1:10),
+                    features = paste0("k", 1:15),
                     cols = rev(brewer.pal(10,"Spectral")),
                     reduction = "spring") & NoLegend() & NoAxes()
 
 ```
 ```{r fig.dim=c(6, 9)}
 FeaturePlot(object = Progenitors.data,
-                    features = paste0("k", c(9,2,10,5,6)),
+                    features = paste0("k", c(15,12,9,8,14,6)),
                     cols = rev(brewer.pal(10,"Spectral")),
                     reduction = "spring",
                     order = T) & NoLegend() & NoAxes()
@@ -133,7 +128,7 @@ FeaturePlot(object = Progenitors.data,
 
 ```{r}
 set.seed(1)
-pca <- prcomp(fit$L[,c(9,2,10,5,6)])$x
+pca <- prcomp(fit$L[,c(15,12,9,8,14,6)])$x
 clusters <- cluster::pam(pca, k = 6)$clustering
 ```
 
@@ -149,13 +144,20 @@ FeaturePlot(object = Progenitors.data,
 
 
 ```{r}
+Idents(Progenitors.data) <- Progenitors.data$TopicsKmeans
+
 DimPlot(Progenitors.data,
         reduction = "spring",
         pt.size = 0.5,
-        cols = c(wes_palette("FantasticFox1"),"grey90"),
+        cols =  c(wes_palette("FantasticFox1"),"grey90", "grey40"),
         split.by = 'ident') + NoLegend() & NoAxes()
 ```
 
+# Save object
+
+```{r}
+saveRDS(Progenitors.data, "Progenitors.RDS")
+```
 
 
 
