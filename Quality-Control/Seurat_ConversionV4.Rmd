@@ -38,6 +38,7 @@ meta.data <- read.table("Hem_metadata.csv", sep= ";", header= T)
 
 meta.data[1:5, 1:5]
 ```
+
 # Create a seurat V4 object
 
 ```{r Create SeuratV4}
@@ -49,6 +50,7 @@ head(Hem.data@meta.data)
 
 rm(list = ls()[!ls() %in% "Hem.data"])
 ```
+
 # Create new Spring coordinates slot
 
 ```{r Spring}
@@ -60,6 +62,7 @@ Hem.data[["spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_
 ```{r}
 DimPlot(Hem.data, reduction = "spring", pt.size = 0.5)
 ```
+
 # Sctransform based normalization
 
 While scaling we regressed sources of variation associated with cell cycle and cell quality metrics
@@ -68,7 +71,6 @@ While scaling we regressed sources of variation associated with cell cycle and c
 # Cell cycle difference scoring
 Hem.data$CC.Difference <- Hem.data$S.Score - Hem.data$G2M.Score
 ```
-
 
 ```{r SCTransform, class.output="scroll-100"}
 Hem.data <- SCTransform(Hem.data,
@@ -92,16 +94,15 @@ Hem.data <- FindClusters(Hem.data, resolution = 0.1)
 ```{r}
 DimPlot(Hem.data,
         reduction = "spring",
-        cols = c(wes_palette("FantasticFox1"),"grey90"),
+        cols = c(wes_palette("FantasticFox1"),"grey60"),
         pt.size = 0.5) & NoAxes()
 ```
-
 
 ```{r fig.dim=c(10, 5)}
 DimPlot(Hem.data,
         reduction = "spring",
         pt.size = 0.5,
-        cols = c(wes_palette("FantasticFox1"),"grey90"),
+        cols = c(wes_palette("FantasticFox1"),"grey60"),
         split.by = 'ident') + NoLegend() & NoAxes()
 ```
 
@@ -120,4 +121,3 @@ format(Sys.time(), "%d %B, %Y, %H,%M")
 #Packages used
 sessionInfo()
 ```
-
