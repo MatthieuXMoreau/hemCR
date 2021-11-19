@@ -51,8 +51,7 @@ DimPlot(Hem.data,
         pt.size = 0.5) & NoAxes()
 ```
 
-
-# Extract the apical progenitors 
+# Extract the apical progenitors
 
 ```{r}
 # Extract apical progenitors 
@@ -69,7 +68,7 @@ rm(Hem.data) ; gc()
 
 # Filter gene counts matrix
 
-For this analysis we will keep only genes detected in at least 20 over 12325 cells 
+For this analysis we will keep only genes detected in at least 20 over 12325 cells
 
 ```{r}
 progenitors.counts <- GetAssayData(object = Progenitors.data[["RNA"]], slot = "counts")
@@ -82,7 +81,6 @@ progenitors.counts <- progenitors.counts[genes.use, ]
 dim(progenitors.counts)
 ```
 
-
 ```{r}
 gc()
 ```
@@ -91,7 +89,7 @@ gc()
 
 ## Fit topic model
 
-```{r fit_topic_model, cache=TRUE, class.output="scroll-100"} 
+```{r fit_topic_model, cache=TRUE, class.output="scroll-100"}
 set.seed(1)
 
 fit <- fit_topic_model(t(progenitors.counts),
@@ -119,6 +117,7 @@ FeaturePlot(object = Progenitors.data,
                     reduction = "spring") & NoLegend() & NoAxes()
 
 ```
+
 ```{r fig.dim=c(6, 9)}
 FeaturePlot(object = Progenitors.data,
                     features = paste0("k", c(15,12,9,8,14,6)),
@@ -130,12 +129,11 @@ FeaturePlot(object = Progenitors.data,
 
 ## Cluster Progenitors
 
-```{r}
+```{r Kmeans clustering on topics PCs}
 set.seed(1)
 pca <- prcomp(fit$L[,c(15,12,9,8,14,6)])$x
 clusters <- cluster::pam(pca, k = 6)$clustering
 ```
-
 
 ```{r}
 Progenitors.data@meta.data$TopicsKmeans <- as.numeric(clusters)
@@ -145,7 +143,6 @@ FeaturePlot(object = Progenitors.data,
             cols = c(wes_palette("FantasticFox1"),"grey90", "grey40"),
             reduction = "spring") & NoLegend() & NoAxes()
 ```
-
 
 ```{r}
 Idents(Progenitors.data) <- Progenitors.data$TopicsKmeans
@@ -159,9 +156,91 @@ DimPlot(Progenitors.data,
 
 # Progenitors domains specific gene expression
 
-# Transfert identity to the full dataset
+```{r Find markers}
+domain.markers <- FindAllMarkers(Progenitors.data,
+                                 only.pos = F,
+                                 min.pct = 0.25,
+                                 logfc.threshold = 0.3)
+
+domain.markers.filtered <- domain.markers %>%
+                            group_by(cluster) %>%
+                            top_n(n = 4, wt = avg_log2FC) %>% 
+                            unique()
+```
+
+```{r fig.dim=c(9,6)}
+DotPlot(Progenitors.data,
+        features = unique(domain.markers.filtered$gene)
+        ) + RotatedAxis()
+```
+
+## Selected genes for tissue mapping
+
+```{r fig.dim=c(9,6)}
+DotPlot(Progenitors.data,
+        features = c("Shisa2", "Wif1", "Rassf4", "Sulf1", "Dkk3", "Dlk1","Ttr")
+        ) + RotatedAxis()
+```
+
+![](Figures/Illustration_Hem.jpg "Progenitor domain marker ISH at E12.5")
+
+# Rename clusters
+
+```{r}
+ident = c("Dorso-Medial_pallium", "ChP", "Medial_pallium", "Hem", "ChP_progenitors", "Thalamic_eminence")
+
+Progenitors.data$progenitor_type <- sapply(Progenitors.data$TopicsKmeans,
+                                           FUN = function(x) {x= ident[x]})
+
+Idents(Progenitors.data) <- Progenitors.data$progenitor_type
+```
+
+```{r}
+DimPlot(Progenitors.data,
+        reduction = "spring",
+        pt.size = 0.5,
+        cols =  c(wes_palette("FantasticFox1"),"grey90"),
+        split.by = 'ident') + NoLegend() & NoAxes()
+```
+
+# Transfer identity to the full dataset
+
+```{r Load full dataset}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+```
+
+```{r transfer identitis}
+Hem.data$Cell_ident <- sapply(Hem.data$Barcodes,
+                              FUN = function(x) {
+                                if (x %in% Progenitors.data$Barcodes) {
+                                  x = Progenitors.data@meta.data[x, "progenitor_type"]
+                                } else {
+                                  x = paste0("seurat_clusters_", Hem.data@meta.data[x, "seurat_clusters"])
+                                  }
+                              })
+```
+
+```{r}
+DimPlot(object = Hem.data,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#83c3b8", #"ChP"
+                 "#009fda", #"ChP_progenitors"
+                 "#68b041", #"Dorso-Medial_pallium"
+                 "#e46b6b", #"Hem"
+                 "#e3c148", #"Medial_pallium"
+                 "#b7d174", #2
+                 "grey40", #4
+                 "black", #5
+                 "#3e69ac" #"Thalamic_eminence"
+                 ))
+```
 
 # Save data
+
+```{r}
+saveRDS(Hem.data, "../QC.filtered.cells.RDS")
+```
 
 # Session Info
 
