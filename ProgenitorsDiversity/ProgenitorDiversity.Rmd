@@ -80,7 +80,10 @@ genes.use <- names(x = num.cells[which(x = num.cells >= 20)])
 progenitors.counts <- progenitors.counts[genes.use, ]
 
 dim(progenitors.counts)
+```
 
+
+```{r}
 gc()
 ```
 
@@ -88,7 +91,7 @@ gc()
 
 ## Fit topic model
 
-```{r fit_topic_model ,cache=TRUE, class.output="scroll-100"} 
+```{r fit_topic_model, cache=TRUE, class.output="scroll-100"} 
 set.seed(1)
 
 fit <- fit_topic_model(t(progenitors.counts),
@@ -101,6 +104,7 @@ fit <- fit_topic_model(t(progenitors.counts),
                        control.refine = list(numiter = 4, nc= 6, extrapolate = TRUE),
                        verbose = "progressbar")
 ```
+
 ## Explore the different topics
 
 ```{r}
@@ -153,13 +157,11 @@ DimPlot(Progenitors.data,
         split.by = 'ident') + NoLegend() & NoAxes()
 ```
 
-# Save object
+# Progenitors domains specific gene expression
 
-```{r}
-saveRDS(Progenitors.data, "Progenitors.RDS")
-```
+# Transfert identity to the full dataset
 
-
+# Save data
 
 # Session Info
 
