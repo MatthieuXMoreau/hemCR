@@ -1,0 +1,130 @@
+---
+title: "Analysis of cell cycle dynamics using revelio"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE)
+
+# To use biomart 
+new_config <- httr::config(ssl_verifypeer = FALSE)
+httr::set_config(new_config, override = FALSE)
+```
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(Revelio)
+library(orthologsBioMART)
+library(Matrix)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# Load and filter progenitors data
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+```
+
+```{r}
+DimPlot(object = Hem.data,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#83c3b8", #"ChP"
+                 "#009fda", #"ChP_progenitors"
+                 "#68b041", #"Dorso-Medial_pallium"
+                 "#e46b6b", #"Hem"
+                 "#e3c148", #"Medial_pallium"
+                 "#b7d174", #2
+                 "grey40", #4
+                 "black", #5
+                 "#3e69ac" #"Thalamic_eminence"
+                 ))
+```
+We first test the tool on the hem progenitor subset
+
+```{r}
+Idents(Hem.data) <- Hem.data$Cell_ident
+```
+
+
+```{r}
+Progenitors.data <-  subset(Hem.data, idents = c("Hem"))
+
+DimPlot(Progenitors.data,
+        reduction = "spring",
+        pt.size = 2,
+        cols =  c("#e46b6b"),
+        split.by = 'ident') + NoLegend() & NoAxes()
+```
+
+# Prepare data for revelio input
+
+## Find mous ortologues to provided human cell cycle genes
+
+```{r}
+Cellcyclegenes <- revelioTestData_cyclicGenes
+head(Cellcyclegenes)
+```
+
+We use [orthologsBioMART](https://vitkl.github.io/orthologsBioMART/index.html) library to map human to mouse mouse orthologs
+
+```{r}
+G1.S <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$G1.S), 
+                          to_attributes = "external_gene_name")
+
+S <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$S), 
+                          to_attributes = "external_gene_name")
+
+G2 <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$G2), 
+                          to_attributes = "external_gene_name")
+
+G2.M <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$G2.M), 
+                          to_attributes = "external_gene_name")
+
+M.G1 <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$M.G1), 
+                          to_attributes = "external_gene_name")
+
+CCgenes <- as.matrix(G1.S$hgnc_symbol, S$hgnc_symbol, G2$hgnc_symbol, G2.M$hgnc_symbol, M.G1$hgnc_symbol)
+
+```
+
+
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
+
+
