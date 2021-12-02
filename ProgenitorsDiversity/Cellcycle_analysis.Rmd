@@ -73,12 +73,15 @@ Idents(Hem.data) <- Hem.data$Cell_ident
 
 
 ```{r}
-Progenitors.data <-  subset(Hem.data, idents = c("Dorso-Medial_pallium","Medial_pallium"))
+Progenitors.data <-  subset(Hem.data, idents = c("Dorso-Medial_pallium", "Hem","Medial_pallium"))
 
 DimPlot(Progenitors.data,
         reduction = "spring",
-        pt.size = 2,
-        cols =  c("#68b041","#e3c148")) + NoLegend() & NoAxes()
+        pt.size = 1,
+        cols =  c("#68b041", #"Dorso-Medial_pallium"
+                 "#e46b6b", #"Hem"
+                 "#e3c148", #"Medial_pallium",
+                 )) + NoLegend() & NoAxes()
 ```
 
 # Prepare data for revelio input
@@ -155,6 +158,9 @@ myData <- createRevelioObject(rawData = rawCounts,
                               lowernGeneCutoff = 0,
                               uppernUMICutoff = Inf,
                               ccPhaseAssignBasedOnIndividualBatches = F)
+
+rm("rawCounts")
+gc()
 ```
 
 The `getCellCyclePhaseAssignInformation` filter "outlier" cells for cell cycle phase assignation. We modified the function to keep all cells as we observed this does not affect the global cell cycle fitting procedure
@@ -165,7 +171,7 @@ source("../Functions/functions_InitializationCCPhaseAssignFiltering.R")
 
 myData <- getCellCyclePhaseAssign_allcells(myData)
 ```
-```{r}
+```{r include=FALSE}
 rm(list = ls()[!ls() %in% c("Progenitors.data", "myData")])
 gc()
 ```
