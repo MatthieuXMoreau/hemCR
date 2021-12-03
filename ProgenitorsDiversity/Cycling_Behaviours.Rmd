@@ -1,0 +1,126 @@
+---
+title: "Comparison between progenitor domain cycling behaviour"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
+
+# To use biomart 
+new_config <- httr::config(ssl_verifypeer = FALSE)
+httr::set_config(new_config, override = FALSE)
+```
+
+In this part of the analysis we apply [Revelio](https://github.com/danielschw188/Revelio) algorithm to explore cell cycle dynamic of pallial and hem domain radial glial cells
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(Revelio)
+library(orthologsBioMART)
+library(Matrix)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# Load progenitors data
+
+```{r}
+Progenitors.data <- readRDS("Progenitors.RDS")
+```
+
+```{r fig.dim=c(6, 6)}
+p1 <- FeaturePlot(object = Progenitors.data,
+            features = "Revelio.cc",
+            pt.size = 1,
+            cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
+            reduction = "spring",
+            order = T) & NoAxes()
+
+p2 <- DimPlot(object = Progenitors.data,
+        group.by = "Revelio.phase",
+        pt.size = 1,
+        reduction = "spring",
+        cols =  c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) & NoAxes()
+
+p1 + p2
+```
+# Normalization
+
+```{r}
+Progenitors.data <- NormalizeData(Progenitors.data, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+```
+
+
+# Plot some genes trend along cycling axis
+
+```{r}
+Cell.cycle.trend <- function(Seurat.data,
+                             gene){
+  
+  data <- Seurat.data@meta.data %>% select("Revelio.cc", "Revelio.phase")
+  data$Gene <- Progenitors.data@assays$RNA@data[gene,]
+  
+  p <- ggplot(data=data, aes(x= Revelio.cc, y= Gene)) +
+        geom_point(aes(color= Revelio.phase), size=0.5) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+        geom_smooth(method="loess", n= 50, fill="grey") +
+        ylim(0,NA) +
+        ggtitle(gene)
+  
+  return(p)
+}
+
+
+Plot.Genes.trend <- function(Seurat.data,
+                             genes){
+  pList <- mapply(FUN = Cell.cycle.trend, gene = genes,
+                  MoreArgs = list(Seurat.data = Seurat.data),
+                  SIMPLIFY = FALSE)
+  print(x = cowplot::plot_grid(plotlist = pList, ncol = 2))
+} 
+```
+
+```{r fig.dim=c(9,12)}
+Plot.Genes.trend(Seurat.data= Progenitors.data, 
+                 genes= c("Ccna2", "Ccne1",
+                          "Ccnb2", "Ccnb1",
+                          "Cdk1", "Pcna",
+                          "Mcm6", "Hist1h2bc",
+                          "Top2a", "Tpx2",
+                          "Hes1", "Hes6",
+                          "Hes5","Neurog2"))
+
+```
+
+
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
