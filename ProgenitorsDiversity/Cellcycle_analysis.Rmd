@@ -1,5 +1,5 @@
 ---
-title: "Analysis of cell cycle dynamics using revelio"
+title: "Analysis of pallial and hem progenitors cycling dynamics using revelio"
 author:
    - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -24,7 +24,7 @@ new_config <- httr::config(ssl_verifypeer = FALSE)
 httr::set_config(new_config, override = FALSE)
 ```
 
-In this part of the analysis we apply [Revelio](https://github.com/danielschw188/Revelio) algorithm to explore cell cycle dynamic in progenitors and along ChP differentiation
+In this part of the analysis we apply [Revelio](https://github.com/danielschw188/Revelio) algorithm to explore cell cycle dynamic of pallial and hem domain radial glial cells
 
 # Load libraries
 
@@ -78,10 +78,7 @@ Progenitors.data <-  subset(Hem.data, idents = c("Dorso-Medial_pallium", "Hem","
 DimPlot(Progenitors.data,
         reduction = "spring",
         pt.size = 1,
-        cols =  c("#68b041", #"Dorso-Medial_pallium"
-                 "#e46b6b", #"Hem"
-                 "#e3c148", #"Medial_pallium",
-                 )) + NoLegend() & NoAxes()
+        cols =  c("#68b041", "#e3c148", "#e46b6b")) + NoAxes()
 ```
 
 # Prepare data for revelio input
@@ -176,6 +173,15 @@ rm(list = ls()[!ls() %in% c("Progenitors.data", "myData")])
 gc()
 ```
 
+
+```{r}
+myData <- getPCAData(dataList = myData)
+myData <- getOptimalRotation(dataList = myData)
+```
+# Compare results between different ordering approched applied to the DC space
+
+## Phase assigment projection
+
 ```{r}
 Revelio.phase <- as.factor(sapply(Progenitors.data$Barcodes,
                                            function(x) {
@@ -189,7 +195,10 @@ levels(Revelio.phase) <- c("G1.S", "S", "G2", "G2.M", "M.G1","Outlier")
 Progenitors.data$Revelio.phase <- Revelio.phase
 
 table(Progenitors.data$Revelio.phase)
+```
 
+
+```{r}
 DimPlot(object = Progenitors.data,
         group.by = "Revelio.phase",
         reduction = "spring",
@@ -197,70 +206,140 @@ DimPlot(object = Progenitors.data,
         split.by = 'Revelio.phase')
 ```
 
+## Comparison of Revelio cell cycle ordering and *Angle* method
 
-```{r}
-myData <- getPCAData(dataList = myData)
-myData <- getOptimalRotation(dataList = myData)
-```
-# Compare results between different ordering approched applied to the DC space
+To obtain the best linear ordering of cell along G1 to M phase we compare the output `ccPercentageUniformlySpaced' form Revelio and the one obtained with the [*Angle*](https://github.com/dynverse/ti_angle) method describe in [Saelens et. al. Nature Biotechnology 2019](https://www.nature.com/articles/s41587-019-0071-9)
+
+New dataframe 
 
 ```{r}
 CellCycledata <- cbind(as.data.frame(t(myData@transformedData$dc$data[1:2,])),
-                       ccPhase = factor(myData@cellInfo$ccPhase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1")),
                        nUMI= myData@cellInfo$nUMI,
-                       ccPercent= myData@cellInfo$ccPercentageUniformlySpaced,
-                       Seurat.ccScore= Progenitors.data@meta.data[myData@cellInfo$cellID,"CC.Difference"])
+                       Revelio.phase = factor(myData@cellInfo$ccPhase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1")),
+                       Revelio.cc= myData@cellInfo$ccPercentageUniformlySpaced,
+                       Seurat.cc= Progenitors.data@meta.data[myData@cellInfo$cellID,"CC.Difference"])
+```
 
-CellCycledata$Cycling.Score <- atan2(CellCycledata$DC1, CellCycledata$DC2) / 2 / pi + .5
+Compute cycling trajectory with Angle 
 
+```{r}
+CellCycledata$Angle.cc <- atan2(CellCycledata$DC1, CellCycledata$DC2) / 2 / pi + .5
+```
 
+## Cells distribution in the DC1-DC2 space
+
+```{r}
 p1 <- ggplot(CellCycledata, aes(DC1, DC2)) +
-        geom_point(aes(color = ccPhase)) +
+        geom_point(aes(color = Revelio.phase)) +
         scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
 
 p2 <- ggplot(CellCycledata, aes(DC1, DC2)) +
-        geom_point(aes(color=ccPercent), size=2, shape=16) + 
+        geom_point(aes(color=Seurat.cc), size=2, shape=16) + 
         scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
-                              name='Revelio_ccPercent')
+                              name='Seurat_cc')
 
 p3 <- ggplot(CellCycledata, aes(DC1, DC2)) +
-        geom_point(aes(color=Cycling.Score), size=2, shape=16) + 
+        geom_point(aes(color=Angle.cc), size=2, shape=16) + 
         scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
-                              name='Angle_Cycling.Score')
+                              name='Angle.cc')
 
 p4 <- ggplot(CellCycledata, aes(DC1, DC2)) +
-        geom_point(aes(color=Seurat.ccScore), size=2, shape=16) + 
+        geom_point(aes(color=Revelio.cc), size=2, shape=16) + 
         scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
-                              name='Seurat_ccDiff')
+                              name='Revelio_cc')
+
 
 (p1+p2)/(p3+p4)
 ```
+Cycling trajectory obtain with Revelio seems to start with G2.M / M.G1 phase while the one computed with Angle starts from G1.S
 
+## Cells distribution along Revelio and Angle computed trajectories
+
+```{r message=FALSE, warning=FALSE}
+p1 <- ggplot(CellCycledata, aes(x=Angle.cc, y=Revelio.cc, color= Revelio.phase)) +
+        geom_point() +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+
+p2 <- ggplot(CellCycledata, aes(x=Revelio.cc, y = Revelio.phase, fill= Revelio.phase)) +
+        ggridges::geom_density_ridges() +
+        scale_fill_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+
+p3 <- ggplot(CellCycledata, aes(x=Angle.cc, y = Revelio.phase, fill= Revelio.phase)) +
+        ggridges::geom_density_ridges() +
+        scale_fill_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+
+p1/p2/p3
+```
+## Cellular transcript content along the two computed axis
+
+However, when looking at cells' UMI content along the cycling trajectory, Revelio's ordering appears to properly order cells from M.G1 to G2.M since the 1/2 drop in UMI content append at the end of the trajectory
+
+- Mean UMI per .05 interval along the *Angle* axis
 
 ```{r}
-p1 <- ggplot(CellCycledata, aes(x=ccPercent, y = ccPhase, fill= ccPhase)) +
-        ggridges::geom_density_ridges() +
-        scale_fill_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+meanUMI <- CellCycledata %>%
+            mutate(Angle.interval = cut(CellCycledata$Angle.cc, seq(0, max(CellCycledata$Angle.cc) + 0.05, 0.05), dig.lab = 2, right = FALSE)) %>%
+            select(Angle.interval, nUMI) %>%
+            group_by(Angle.interval) %>%
+            summarise(meanUMI =mean(nUMI))
 
-p2 <- ggplot(CellCycledata, aes(x=Cycling.Score, y = ccPhase, fill= ccPhase)) +
-        ggridges::geom_density_ridges() +
-        scale_fill_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+meanUMI$max.Revelio.phase <- CellCycledata %>%
+            mutate(Angle.interval = cut(CellCycledata$Angle.cc, seq(0, max(CellCycledata$Angle.cc) + 0.05, 0.05), dig.lab = 2, right = FALSE)) %>%
+            select(Angle.interval, Revelio.phase) %>%
+            group_by(Angle.interval, Revelio.phase) %>%
+            summarise(nb = n()) %>%
+            filter(nb == max(nb)) %>%
+            pull(Revelio.phase)
 
-p1/p2
+p1 <- ggplot(meanUMI, aes(x=Angle.interval, y=meanUMI/10000, fill=max.Revelio.phase)) +
+        geom_bar(stat = "identity", width = 0.90) +
+        theme(axis.text.x = element_text(angle = 45, hjust=1))+
+        scale_fill_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
 ```
 
+- Mean UMI per .05 interval along the *Revelio* axis
+
 ```{r}
-meanUMI <-c()
-for (i in seq(0.05,1, by = 0.05)) {
-  UMI <- median(CellCycledata[CellCycledata$Cycling.Score > i-5 & CellCycledata$Cycling.Score <=i,"nUMI"])
-  meanUMI <- c(meanUMI, UMI)
-}
+meanUMI <- CellCycledata %>%
+            mutate(Revelio.interval = cut(CellCycledata$Revelio.cc, seq(0, max(CellCycledata$Revelio.cc) + 0.05, 0.05), dig.lab = 2, right = FALSE)) %>%
+            select(Revelio.interval, nUMI) %>%
+            group_by(Revelio.interval) %>%
+            summarise(meanUMI =mean(nUMI))
 
-data <- data.frame(meanUMI= meanUMI,
-                   ccPercent= factor(seq(0.05,1, by = 0.05)))
+meanUMI$max.Revelio.phase <- CellCycledata %>%
+            mutate(Revelio.interval = cut(CellCycledata$Revelio.cc, seq(0, max(CellCycledata$Revelio.cc) + 0.05, 0.05), dig.lab = 2, right = FALSE)) %>%
+            select(Revelio.interval, Revelio.phase) %>%
+            group_by(Revelio.interval, Revelio.phase) %>%
+            summarise(nb = n()) %>%
+            filter(nb == max(nb)) %>%
+            pull(Revelio.phase)
 
-ggplot(data, aes(x=ccPercent, y=meanUMI)) +
-        geom_bar(stat = "identity", width = 1)
+p2 <- ggplot(meanUMI, aes(x=Revelio.interval, y=meanUMI/10000, fill=max.Revelio.phase)) +
+        geom_bar(stat = "identity", width = 0.90) +
+        theme(axis.text.x = element_text(angle = 45, hjust=1))+
+        scale_fill_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+```
+
+
+```{r}
+p1 / p2
+```
+Base on this last plot where we interpret the UMI content drop as corresponding to the cytokinesis at the end of the cell cycle, we decided to use the Revelio computed axis for further cell cycle analysis
+
+# Save cycling trajectories into Seurat metadata slot
+
+```{r}
+Progenitors.data$Revelio.DC1 <- CellCycledata$DC1
+Progenitors.data$Revelio.DC2 <- CellCycledata$DC2
+
+Progenitors.data$Angle.cc <- CellCycledata$Angle.cc
+Progenitors.data$Revelio.cc <- CellCycledata$Revelio.cc
+```
+
+# Save Progenitors seurat obj
+
+```{r}
+saveRDS(Progenitors.data,"Progenitors.RDS")
 ```
 
 
@@ -273,5 +352,3 @@ format(Sys.time(), "%d %B, %Y, %H,%M")
 #Packages used
 sessionInfo()
 ```
-
-
