@@ -92,7 +92,7 @@ head(Cellcyclegenes)
 
 We use [orthologsBioMART](https://vitkl.github.io/orthologsBioMART/index.html) library to map human to mouse mouse orthologs
 
-```{r}
+```{r cache=TRUE}
 G1.S <- findOrthologsHsMm(from_filters = "hgnc_symbol",
                           from_values = as.character(Cellcyclegenes$G1.S), 
                           to_attributes = "external_gene_name")
@@ -149,7 +149,7 @@ gc()
 
 We can now follow the tutorial form the [package github page](https://github.com/danielschw188/Revelio) 
 
-```{r}
+```{r cache=TRUE}
 myData <- createRevelioObject(rawData = rawCounts,
                               cyclicGenes = CCgenes,
                               lowernGeneCutoff = 0,
@@ -163,7 +163,7 @@ gc()
 The `getCellCyclePhaseAssignInformation` filter "outlier" cells for cell cycle phase assignation. We modified the function to keep all cells as we observed this does not affect the global cell cycle fitting procedure
 
 
-```{r}
+```{r cache=TRUE}
 source("../Functions/functions_InitializationCCPhaseAssignFiltering.R")
 
 myData <- getCellCyclePhaseAssign_allcells(myData)
@@ -174,7 +174,7 @@ gc()
 ```
 
 
-```{r}
+```{r cache=TRUE}
 myData <- getPCAData(dataList = myData)
 myData <- getOptimalRotation(dataList = myData)
 ```
