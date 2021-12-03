@@ -17,7 +17,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
 
 # To use biomart 
 new_config <- httr::config(ssl_verifypeer = FALSE)
@@ -168,43 +168,18 @@ source("../Functions/functions_InitializationCCPhaseAssignFiltering.R")
 
 myData <- getCellCyclePhaseAssign_allcells(myData)
 ```
-```{r include=FALSE}
-rm(list = ls()[!ls() %in% c("Progenitors.data", "myData")])
-gc()
+
+```{r cache=TRUE}
+myData <- getPCAData(dataList = myData)
 ```
 
 
 ```{r cache=TRUE}
-myData <- getPCAData(dataList = myData)
 myData <- getOptimalRotation(dataList = myData)
+gc()
 ```
+
 # Compare results between different ordering approched applied to the DC space
-
-## Phase assigment projection
-
-```{r}
-Revelio.phase <- as.factor(sapply(Progenitors.data$Barcodes,
-                                           function(x) {
-                                             if (x %in% myData@cellInfo$cellID) {
-                                               x = as.character(myData@cellInfo[x,"ccPhase"])
-                                             } else {x = "Outlier"}
-                                             }))
-
-levels(Revelio.phase) <- c("G1.S", "S", "G2", "G2.M", "M.G1","Outlier")
-
-Progenitors.data$Revelio.phase <- Revelio.phase
-
-table(Progenitors.data$Revelio.phase)
-```
-
-
-```{r}
-DimPlot(object = Progenitors.data,
-        group.by = "Revelio.phase",
-        reduction = "spring",
-        cols =  c(wes_palette("FantasticFox1"),"grey90"),
-        split.by = 'Revelio.phase')
-```
 
 ## Comparison of Revelio cell cycle ordering and *Angle* method
 
@@ -227,6 +202,12 @@ CellCycledata$Angle.cc <- atan2(CellCycledata$DC1, CellCycledata$DC2) / 2 / pi +
 ```
 
 ## Cells distribution in the DC1-DC2 space
+
+```{r}
+ggplot(CellCycledata, aes(DC1, DC2)) +
+        geom_point(aes(color = Revelio.phase)) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+```
 
 ```{r}
 p1 <- ggplot(CellCycledata, aes(DC1, DC2)) +
@@ -332,8 +313,34 @@ Base on this last plot where we interpret the UMI content drop as corresponding 
 Progenitors.data$Revelio.DC1 <- CellCycledata$DC1
 Progenitors.data$Revelio.DC2 <- CellCycledata$DC2
 
+Progenitors.data$Revelio.phase <- CellCycledata$Revelio.phase
+
 Progenitors.data$Angle.cc <- CellCycledata$Angle.cc
 Progenitors.data$Revelio.cc <- CellCycledata$Revelio.cc
+```
+
+```{r fig.dim=c(6, 9)}
+p1 <- FeaturePlot(object = Progenitors.data,
+            features = "Revelio.cc",
+            pt.size = 1,
+            cols = rev(brewer.pal(10,"Spectral")),
+            reduction = "spring",
+            order = T) & NoAxes()
+
+p2 <- FeaturePlot(object = Progenitors.data,
+                  features = "Angle.cc",
+                  pt.size = 1,
+                  cols = rev(brewer.pal(10,"Spectral")),
+                  reduction = "spring",
+                  order = T) & NoAxes()
+
+p3 <- DimPlot(object = Progenitors.data,
+        group.by = "Revelio.phase",
+        pt.size = 1,
+        reduction = "spring",
+        cols =  c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) & NoAxes()
+
+p1 + p2 + p3
 ```
 
 # Save Progenitors seurat obj
