@@ -334,7 +334,7 @@ ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= nUMI/10000)) +
 rm(list = ls()[!ls() %in% c("Trajectories.neurons")])
 ```
 
-# Load progenitors with for cell cycle trajectory fitted
+# Load progenitors with cell cycle trajectory fitted
 
 ```{r}
 Progenitors.data <- readRDS("../ProgenitorsDiversity/Progenitors.RDS")
@@ -357,7 +357,7 @@ p1 <- DimPlot(Progenitors.data,
         cols =  c("#e3c148", "#e46b6b")) + NoAxes()
 
 p2 <- FeaturePlot(object = Progenitors.data,
-            features = "Revelio.cc",
+            features = "Angle.cc",
             pt.size = 0.5,
             cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
             reduction = "spring",
@@ -388,7 +388,7 @@ Trajectories.all$Phase <- NA
 Trajectories.progenitors <- Progenitors.data@meta.data %>%
                               select(Barcodes, nUMI, Spring_1, Spring_2) %>% 
                               mutate(Lineage= ifelse(Progenitors.data$Cell_ident == "Medial_pallium", "Pallial", "Hem") ,
-                                     Pseudotime= Progenitors.data$Revelio.cc,
+                                     Pseudotime= Progenitors.data$Angle.cc,
                                      Phase = Progenitors.data$Revelio.phase)
                               
 
@@ -400,9 +400,9 @@ Trajectories.all <- rbind(Trajectories.all, Trajectories.progenitors)
 Trajectories.all$Phase <- factor(Trajectories.all$Phase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1"))
 ```
 
-```{r}
+```{r fig.dim=c(9,3)}
 p1 <- ggplot(Trajectories.all, aes(Spring_1, Spring_2)) +
-        geom_point(aes(color=Pseudotime), size=0.5, shape=16) + 
+        geom_point(aes(color=Pseudotime), size=0.5) + 
         scale_color_gradientn(colours=rev(brewer.pal(n =11, name = "Spectral")), name='Speudotime score')
 
 p2 <- ggplot(Trajectories.all, aes(Spring_1, Spring_2)) +
@@ -412,7 +412,7 @@ p2 <- ggplot(Trajectories.all, aes(Spring_1, Spring_2)) +
 p1 + p2
 ```
 
-```{r}
+```{r fig.dim=c(9,3)}
 p1 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
         geom_point(aes(color= Phase), size=0.5) +
         scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
@@ -427,4 +427,136 @@ p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
 
 p1 + p2
 ```
+```{r}
+rm(list = ls()[!ls() %in% c("Trajectories.all")])
+```
 
+# Subset the full dataset Seurat object
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+```
+
+```{r}
+Neuro.trajectories <- CreateSeuratObject(counts = Hem.data@assays$RNA@data[, Trajectories.all$Barcodes],
+                                         meta.data = Trajectories.all)
+
+spring <- as.matrix(Neuro.trajectories@meta.data %>% select("Spring_1", "Spring_2"))
+  
+Neuro.trajectories[["spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_", assay = DefaultAssay(Neuro.trajectories))
+```
+
+```{r fig.dim=c(6, 12)}
+p1 <- FeaturePlot(object = Neuro.trajectories,
+            features = "Pseudotime",
+            pt.size = 1,
+            cols = rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
+            reduction = "spring",
+            order = T) & NoAxes()
+
+p2 <- DimPlot(object = Neuro.trajectories,
+        group.by = "Lineage",
+        pt.size = 1,
+        reduction = "spring",
+        cols =  c("#cc391b", "#026c9a")) & NoAxes()
+
+
+p3 <- DimPlot(object = Neuro.trajectories,
+        group.by = "Phase",
+        pt.size = 1,
+        reduction = "spring",
+        cols =  c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) & NoAxes()
+
+p1 + p2 + p3
+```
+
+
+```{r}
+rm(list = ls()[!ls() %in% c("Neuro.trajectories")])
+```
+
+## Normalization
+
+```{r}
+Neuro.trajectories<- NormalizeData(Neuro.trajectories, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+```
+
+```{r}
+Neuro.trajectories <- FindVariableFeatures(Neuro.trajectories, selection.method = "vst", nfeatures = 2000, assay = "RNA")
+```
+## Plot some genes along pseudotime
+
+```{r}
+trend <- function(Seurat.data,
+                  group.by,
+                  gene){
+  
+  data <- Seurat.data@meta.data %>% select(Lineage, Pseudotime, Phase)
+  data$Gene <- Seurat.data@assays$RNA@data[gene,]
+  
+  if (!group.by == "Lineage") {
+    p <- ggplot(data=data, aes(x= Pseudotime, y= Gene)) +
+        geom_point(aes(color= Phase), size=0.5) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+        geom_smooth(method="loess", n= 50, fill="grey") +
+        ylim(0,NA) +
+        ggtitle(gene)
+  } else {
+    p <- ggplot(data=data, aes(x= Pseudotime, y= Gene)) +
+        geom_point(aes(color= Lineage), size=0.5) +
+        scale_color_manual(values= c("#cc391b", "#026c9a")) +
+        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
+        ylim(0,NA) +
+        ggtitle(gene)
+  }
+  
+  
+  return(p)
+}
+
+
+Plot.Genes.trend <- function(Seurat.data,
+                             group.by,
+                             genes){
+  pList <- mapply(FUN = trend, gene = genes,
+                  MoreArgs = list(Seurat.data = Seurat.data, group.by=group.by),
+                  SIMPLIFY = FALSE)
+  print(x = cowplot::plot_grid(plotlist = pList, ncol = 2))
+} 
+```
+
+
+```{r fig.dim=c(9,8)}
+Plot.Genes.trend(Seurat.data= Neuro.trajectories,
+                 group.by = "Lineage",
+                 genes= c("Gas1","Sox2",
+                          "Neurog2", "Btg2",
+                          "Tbr1", "Mapt",
+                          "Trp73", "Foxg1"))
+```
+
+```{r fig.dim=c(9,6)}
+Plot.Genes.trend(Seurat.data= Neuro.trajectories,
+                 group.by = "Lineage",
+                 genes= c("Gmnc", "Mcidas",
+                          "Foxj1", "Trp73",
+                          "Lhx1", "Cdkn1a"))
+```
+
+```{r fig.dim=c(9,5)}
+Plot.Genes.trend(Seurat.data= Neuro.trajectories,
+                 group.by = "Lineage",
+                 genes= c("Mki67", "Top2a",
+                          "H2afx", "Cdkn1c"))
+```
+
+
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
