@@ -549,7 +549,182 @@ Plot.Genes.trend(Seurat.data= Neuro.trajectories,
                  genes= c("Mki67", "Top2a",
                           "H2afx", "Cdkn1c"))
 ```
+# Use monocle2 to model gene expression along cycling axis
 
+## Initialize a monocle object
+
+```{r}
+# Transfer metadata
+meta.data <- data.frame(Barcode= Neuro.trajectories$Barcodes,
+                        Lineage= Neuro.trajectories$Lineage,
+                        Pseudotime= Neuro.trajectories$Pseudotime,
+                        Phase= Neuro.trajectories$Phase)
+
+Annot.data  <- new('AnnotatedDataFrame', data = meta.data)
+
+# Transfer counts data
+var.genes <- Neuro.trajectories[["RNA"]]@var.features
+count.data = data.frame(gene_short_name = rownames(Neuro.trajectories[["RNA"]]@data[var.genes,]),
+                        row.names = rownames(Neuro.trajectories[["RNA"]]@data[var.genes,]))
+
+feature.data <- new('AnnotatedDataFrame', data = count.data)
+
+# Create the CellDataSet object including variable genes only
+gbm_cds <- newCellDataSet(Neuro.trajectories[["RNA"]]@counts[var.genes,],
+                          phenoData = Annot.data,
+                          featureData = feature.data,
+                          lowerDetectionLimit = 0,
+                          expressionFamily = negbinomial())
+```
+
+```{r message=FALSE, warning=FALSE}
+gbm_cds <- estimateSizeFactors(gbm_cds)
+gbm_cds <- estimateDispersions(gbm_cds)
+gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
+```
+
+```{r}
+rm(list = ls()[!ls() %in% c("Neuro.trajectories", "gbm_cds", "Gene.Trend", "Plot.Genes.trend")])
+gc()
+```
+## Test each gene trend over pseudotime score
+
+### Find genes DE along pseudomaturation axis
+
+```{r differentialGeneTest, message=FALSE, warning=FALSE, cache=TRUE}
+pseudo.maturation.diff <- differentialGeneTest(gbm_cds, 
+                                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)*Lineage", 
+                                                 reducedModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
+                                                 cores = parallel::detectCores() - 2)
+
+```
+
+```{r}
+# Filter genes based on FDR
+pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-10)
+```
+
+## Direction of the DEG by calculating the area between curves (ABC)
+
+### Smooth commun genes along the two trajectories
+
+```{r Smooth gene expression, message=FALSE, warning=FALSE, cache=TRUE}
+# Create a new pseudo-DV vector of 200 points
+nPoints <- 200
+
+new_data = list()
+for (Lineage in unique(pData(gbm_cds)$Lineage)){
+  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(pData(gbm_cds)$Pseudotime), max(pData(gbm_cds)$Pseudotime), length.out = nPoints), Lineage=Lineage)
+}
+
+new_data = do.call(rbind, new_data)
+
+# Smooth gene expression
+Diff.curve_matrix <- genSmoothCurves(gbm_cds[as.character(pseudo.maturation.diff.filtered$gene_short_name),],
+                                      trend_formula = "~sm.ns(Pseudotime, df = 3)*Lineage",
+                                      relative_expr = TRUE,
+                                      new_data = new_data,
+                                      cores= parallel::detectCores() - 2)
+```
+
+### Compute the ABC for each gene
+
+```{r Compute the ABC}
+# Extract matrix containing smoothed curves for each lineages
+Pal_curve_matrix <- Diff.curve_matrix[, 1:nPoints] #Pallial points
+CR_curve_matrix <- Diff.curve_matrix[, (nPoints + 1):(2 * nPoints)] #CR points
+
+# Direction of the comparison : postive ABCs <=> Upregulated in CR lineage
+ABCs_res <- CR_curve_matrix - Pal_curve_matrix
+
+# Average logFC between the 2 curves
+ILR_res <- log2(CR_curve_matrix/ (Pal_curve_matrix + 0.1)) 
+  
+ABCs_res <- apply(ABCs_res, 1, function(x, nPoints) {
+                  avg_delta_x <- (x[1:(nPoints - 1)] + x[2:(nPoints)])/2
+                  step <- (100/(nPoints - 1))
+                  res <- round(sum(avg_delta_x * step), 3)
+                  return(res)},
+                  nPoints = nPoints) # Compute the area below the curve
+  
+ABCs_res <- cbind(ABCs_res, ILR_res[,ncol(ILR_res)])
+colnames(ABCs_res)<- c("ABCs", "Endpoint_ILR")
+
+# Import ABC values into the DE test results table
+pseudo.maturation.diff.filtered <- cbind(pseudo.maturation.diff.filtered[,1:4],
+                                         ABCs_res,
+                                         pseudo.maturation.diff.filtered[,5:6])
+```
+
+## Plot CR specific trajectory
+
+```{r}
+# Extract Pallial neurons trajectory genes
+CR.res <- as.data.frame(pseudo.maturation.diff.filtered[pseudo.maturation.diff.filtered$ABCs > 10,])
+CR.genes <- row.names(CR.res)
+
+CR_curve_matrix <- CR_curve_matrix[CR.genes, ]
+```
+
+### CR specific trajectory
+
+```{r CR gene heatmap}
+library(seriation)
+# Order the rows using seriation
+dst <- as.dist((1-cor(scale(t(CR_curve_matrix)), method = "spearman")))
+row.ser <- seriation::seriate(dst, method ="GW_ward") #"R2E"
+gene.order <- rownames(CR_curve_matrix[get_order(row.ser),])
+
+#anno.colors <- list(lineage = c(Other_Neurons="#026c9a", CR_cells="#cc391b"),
+                    #Gene.Clusters = c(Clust.1 ="#b79f0b" , Clust.2="#e46B6b", Clust.3="#e7823a", Clust.4="#cc8778", Clust.5="#68b041", Clust.6="#5ab793"))
+
+
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(1:200,#CR.points 
+                                  400:201)], #Pal.points
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   #annotation_row = Nr4a2.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   #annotation_col = data.frame(lineage = rep(c("CR_cells","Other_Neurons"), each=200)),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = T,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+```
+
+```{r}
+# Order the rows using seriation
+dst <- as.dist((1-cor(scale(t(CR_curve_matrix)), method = "spearman")))
+row.ser <- seriation::seriate(dst, method ="GW_ward") #"R2E" #TSP #"GW"
+gene.order <- seriation::get_order(row.ser)
+
+anno.colors <- list(Gene.Clusters = c(Clust.1 ="#68b041",
+                                      Clust.2="#e46B6b",
+                                      Clust.3="#e7823a",
+                                      Clust.4="#5ab793"#,
+                                      #Clust.5="#68b041",
+                                      #Clust.6="#5ab793"
+                                      ))
+
+
+pheatmap::pheatmap(CR_curve_matrix[gene.order,], 
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   #annotation_row = Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   #annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = T,
+                   fontsize_row = 2,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+
+```
 
 # Session Info
 
