@@ -1,11 +1,11 @@
 # 06-12-21
 
-- Cajal-Retzius_Trajectory.Rmd
+-   Cajal-Retzius_Trajectory.Rmd
 
-  -[X] Fit principal curve on pallial and CR differentiating cells
-  -[X] Concatenate this pseudotime axis with progenitor cells cycle axis
+    -   [X] Fit principal curve on pallial and CR differentiating cells
+    -   [X] Concatenate this pseudotime axis with progenitor cells cycle axis
       - Test both the alignment obtained from Revelio or with Angle methods
-  -[X] fit gam to identify CR enriched genes along differentiation
+    -   [X] fit gam to identify CR enriched genes along differentiation
 
 # 03-12-21
 
