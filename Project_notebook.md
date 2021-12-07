@@ -1,3 +1,13 @@
+# 07-12-21
+
+-   Cajal-Retzius_Trajectory.Rmd
+
+    -   [X] Set qval threshold to filter out DEG genes between the two trajectories
+    -   [X] Plot lineage specific heatmaps and mean genes trend
+    -   [X] Perform GO term enrichment on all genes or cluster-wise with gprofiler2
+    -   [ ] Differentiate cycling BP from direct-neurogenesis
+    -   [ ] Explore DNA stress genes expression / *Cdk1* expression lagging 
+    
 # 06-12-21
 
 -   Cajal-Retzius_Trajectory.Rmd
