@@ -680,15 +680,13 @@ CR_curve_matrix <- CR_curve_matrix[CR.genes, ]
 ### CR specific trajectory
 
 ```{r}
+## Cluster gene by expression profiles
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(CR_curve_matrix),method = "spearman"))), k= 5)
 
-```
-
-```{r}
-# Save results in a dataframe
-Gene.dynamique <- data.frame(Gene= names(clusters),
-                             Waves = as.numeric(clusters),
-                             Gene.Clusters = as.numeric(clusters),
-                             q.val = CR.res$qval,
+Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
+                             Waves= Pseudotime.genes.clusters$clustering,
+                             Gene.Clusters = Pseudotime.genes.clusters$clustering,
+                             q.val = CR.res$pval,
                              ABCs= CR.res$ABCs
                              ) %>% arrange(Gene.Clusters)
 
@@ -702,8 +700,10 @@ dst <- as.dist((1-cor(scale(t(CR_curve_matrix)), method = "spearman")))
 row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
 gene.order <- rownames(CR_curve_matrix[get_order(row.ser),])
 
+# Set annotation colors
+pal <- wes_palette("Darjeeling1")
 anno.colors <- list(lineage = c(Pallial_neurons="#026c9a", Cajal_Retzius="#cc391b"),
-                    Gene.Clusters = c(Clust.1 ="#b79f0b" , Clust.2="#e46B6b", Clust.3="#e7823a", Clust.4="#cc8778", Clust.5="#68b041", Clust.6="#5ab793"))
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
 
 pheatmap::pheatmap(Diff.curve_matrix[gene.order,
@@ -725,7 +725,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
 
 ```{r}
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
-                    Gene.Clusters = c(Clust.1 ="#b79f0b" , Clust.2="#e46B6b", Clust.3="#e7823a", Clust.4="#cc8778", Clust.5="#68b041", Clust.6="#5ab793"))
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
 col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), each=100))
 rownames(col.anno) <- 201:400
