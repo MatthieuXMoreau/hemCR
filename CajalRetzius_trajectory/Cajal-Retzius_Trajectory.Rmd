@@ -30,6 +30,7 @@ httr::set_config(new_config, override = FALSE)
 library(Seurat)
 library(princurve)
 library(monocle)
+library(seriation)
 library(Matrix)
 library(dplyr)
 library(RColorBrewer)
@@ -285,7 +286,6 @@ score <- sapply(Trajectories.neurons$PseudotimeScore,
 Trajectories.neurons$PseudotimeScore.shifted <- (score - min(score)) / (max(score) - min(score))
 ```
 
-
 ```{r fig.dim=c(9,10)}
 # Neurog2
 p1 <- FeaturePlot(object = Neurons.data ,
@@ -535,7 +535,6 @@ Plot.Genes.trend <- function(Seurat.data,
 } 
 ```
 
-
 ```{r fig.dim=c(9,8)}
 Plot.Genes.trend(Seurat.data= Neuro.trajectories,
                  group.by = "Lineage",
@@ -559,7 +558,6 @@ Plot.Genes.trend(Seurat.data= Neuro.trajectories,
                  genes= c("Mki67", "Top2a",
                           "H2afx", "Cdkn1c"))
 ```
-
 
 # Use monocle2 to model gene expression along cycling axis
 
@@ -605,7 +603,7 @@ gc()
 ### Find genes DE along pseudomaturation axis
 
 ```{r differentialGeneTest, message=FALSE, warning=FALSE, cache=TRUE}
-pseudo.maturation.diff <- differentialGeneTest(gbm_cds, 
+pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed > 80,], 
                                                  fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)*Lineage", 
                                                  reducedModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
                                                  cores = parallel::detectCores() - 2)
@@ -614,7 +612,7 @@ pseudo.maturation.diff <- differentialGeneTest(gbm_cds,
 
 ```{r}
 # Filter genes based on FDR
-pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-10)
+pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-40)
 ```
 
 ## Direction of the DEG by calculating the area between curves (ABC)
@@ -673,7 +671,7 @@ pseudo.maturation.diff.filtered <- cbind(pseudo.maturation.diff.filtered[,1:4],
 
 ```{r}
 # Extract Pallial neurons trajectory genes
-CR.res <- as.data.frame(pseudo.maturation.diff.filtered[pseudo.maturation.diff.filtered$ABCs > 10,])
+CR.res <- as.data.frame(pseudo.maturation.diff.filtered[pseudo.maturation.diff.filtered$ABCs > 0,])
 CR.genes <- row.names(CR.res)
 
 CR_curve_matrix <- CR_curve_matrix[CR.genes, ]
@@ -681,28 +679,44 @@ CR_curve_matrix <- CR_curve_matrix[CR.genes, ]
 
 ### CR specific trajectory
 
+```{r}
+
+```
+
+```{r}
+# Save results in a dataframe
+Gene.dynamique <- data.frame(Gene= names(clusters),
+                             Waves = as.numeric(clusters),
+                             Gene.Clusters = as.numeric(clusters),
+                             q.val = CR.res$qval,
+                             ABCs= CR.res$ABCs
+                             ) %>% arrange(Gene.Clusters)
+
+row.names(Gene.dynamique) <- Gene.dynamique$Gene
+Gene.dynamique$Gene.Clusters <- paste0("Clust.",Gene.dynamique$Gene.Clusters)
+```
+
 ```{r CR gene heatmap}
-library(seriation)
 # Order the rows using seriation
 dst <- as.dist((1-cor(scale(t(CR_curve_matrix)), method = "spearman")))
-row.ser <- seriation::seriate(dst, method ="GW_ward") #"R2E"
+row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
 gene.order <- rownames(CR_curve_matrix[get_order(row.ser),])
 
-#anno.colors <- list(lineage = c(Other_Neurons="#026c9a", CR_cells="#cc391b"),
-                    #Gene.Clusters = c(Clust.1 ="#b79f0b" , Clust.2="#e46B6b", Clust.3="#e7823a", Clust.4="#cc8778", Clust.5="#68b041", Clust.6="#5ab793"))
+anno.colors <- list(lineage = c(Pallial_neurons="#026c9a", Cajal_Retzius="#cc391b"),
+                    Gene.Clusters = c(Clust.1 ="#b79f0b" , Clust.2="#e46B6b", Clust.3="#e7823a", Clust.4="#cc8778", Clust.5="#68b041", Clust.6="#5ab793"))
 
 
 pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                c(1:200,#CR.points 
-                                  400:201)], #Pal.points
+                                c(200:1,#CR.points 
+                                  201:400)], #Pal.points
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
-                   #annotation_row = Nr4a2.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   #annotation_col = data.frame(lineage = rep(c("CR_cells","Other_Neurons"), each=200)),
+                   annotation_row = Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(lineage = rep(c("Pallial_neurons","Cajal_Retzius"), each=200)),
                    annotation_colors = anno.colors,
                    show_colnames = F,
-                   show_rownames = T,
+                   show_rownames = F,
                    fontsize_row = 8,
                    color =  viridis::viridis(9),
                    breaks = seq(-2.5,2.5, length.out = 9),
@@ -710,29 +724,23 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
 ```
 
 ```{r}
-# Order the rows using seriation
-dst <- as.dist((1-cor(scale(t(CR_curve_matrix)), method = "spearman")))
-row.ser <- seriation::seriate(dst, method ="GW_ward") #"R2E" #TSP #"GW"
-gene.order <- seriation::get_order(row.ser)
+anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
+                    Gene.Clusters = c(Clust.1 ="#b79f0b" , Clust.2="#e46B6b", Clust.3="#e7823a", Clust.4="#cc8778", Clust.5="#68b041", Clust.6="#5ab793"))
 
-anno.colors <- list(Gene.Clusters = c(Clust.1 ="#68b041",
-                                      Clust.2="#e46B6b",
-                                      Clust.3="#e7823a",
-                                      Clust.4="#5ab793"#,
-                                      #Clust.5="#68b041",
-                                      #Clust.6="#5ab793"
-                                      ))
+col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), each=100))
+rownames(col.anno) <- 201:400
 
-
-pheatmap::pheatmap(CR_curve_matrix[gene.order,], 
+pheatmap::pheatmap(CR_curve_matrix[gene.order,],
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
-                   #annotation_row = Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   #annotation_colors = anno.colors,
+                   annotation_row = Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = col.anno,
+                   annotation_colors = anno.colors,
+                   gaps_col = 100,
                    show_colnames = F,
-                   show_rownames = T,
-                   fontsize_row = 2,
+                   show_rownames = F,
+                   fontsize_row = 8,
                    color =  viridis::viridis(9),
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
