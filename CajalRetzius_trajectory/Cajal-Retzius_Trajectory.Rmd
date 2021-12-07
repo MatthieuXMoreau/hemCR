@@ -491,7 +491,7 @@ Neuro.trajectories<- NormalizeData(Neuro.trajectories, normalization.method = "L
 ```
 
 ```{r}
-Neuro.trajectories <- FindVariableFeatures(Neuro.trajectories, selection.method = "disp", nfeatures = 2000, assay = "RNA")
+Neuro.trajectories <- FindVariableFeatures(Neuro.trajectories, selection.method = "disp", nfeatures = 3000, assay = "RNA")
 ```
 
 ## Plot some genes along pseudotime
@@ -575,7 +575,7 @@ pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_
 
 ```{r}
 # Filter genes based on FDR
-pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-35)
+pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-40)
 ```
 
 ## Direction of the DEG by calculating the area between curves (ABC)
@@ -657,7 +657,7 @@ row.names(CR.Gene.dynamique) <- CR.Gene.dynamique$Gene
 CR.Gene.dynamique$Gene.Clusters <- paste0("Clust.", CR.Gene.dynamique$Gene.Clusters)
 ```
 
-```{r CR gene heatmap}
+```{r CR gene heatmap, fig.dim=c(9, 5)}
 # Order the rows using seriation
 dst <- as.dist((1-cor(scale(t(CR_curve_matrix)), method = "pearson")))
 row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
@@ -686,7 +686,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                    main = "")
 ```
 
-```{r}
+```{r fig.dim=c(9, 5)}
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
                     Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
@@ -711,7 +711,7 @@ pheatmap::pheatmap(CR_curve_matrix[gene.order,],
 ```
 ### Gene cluster trend
 
-```{r}
+```{r fig.dim=c(9,6)}
 source("../Functions/functions_GeneClusterTrend.R")
 
 Plot.clust.trends(Neuro.trajectories,
@@ -720,6 +720,7 @@ Plot.clust.trends(Neuro.trajectories,
                    clust.list = Pseudotime.genes.clusters$clustering,
                    Smooth.method = "gam")
 ```
+
 ### GO term enrichment in gene clusters using gprofiler2
 
 ```{r}
@@ -737,9 +738,28 @@ CR.gostres <- gost(query = list("Clust.1" = CR.Gene.dynamique %>% filter(Gene.Cl
 ```
 
 ```{r}
-Signaling_And_Death_GOterm <- CR.gostres$result[CR.gostres$result$term_id %in% c("GO:0007267", "GO:0005102", "GO:0048018", "GO:0070997", "GO:0051402"),]
+DNA_damage_GOterm <- CR.gostres$result[CR.gostres$result$term_id %in% c("GO:0008630", "GO:0030330", "GO:0031571", "GO:0006974", "GO:0006977","GO:0033554",
+                                                                                 "GO:0044773", "GO:0042771", "GO:0042770", "GO:2001021", "GO:1902229"),]
 
-Signaling_And_Death_GOterm[,c(1,2,3,5,6,7,11)]
+DNA_damage_GOterm[,c(1,2,3,5,6,7,11)]
+```
+
+```{r}
+CR.gostres <- gost(query = as.character(CR.Gene.dynamique$Gene),
+                organism = "mmusculus", ordered_query = F, 
+                multi_query = F, significant = T, exclude_iea = T, 
+                measure_underrepresentation = F, evcodes = T, 
+                user_threshold = 0.05, correction_method = "fdr", 
+                domain_scope = "annotated", custom_bg = NULL, 
+                numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+```
+
+
+```{r}
+DNA_damage_GOterm <- CR.gostres$result[CR.gostres$result$term_id %in% c("GO:0008630", "GO:0030330", "GO:0031571", "GO:0006974", "GO:0006977",
+                                                                                 "GO:0044773", "GO:0042771", "GO:0042770", "GO:2001021", "GO:1902229"),]
+
+DNA_damage_GOterm[,c(1,2,3,5,6,7,11)]
 ```
 
 
@@ -757,7 +777,7 @@ Pal_curve_matrix <- Pal_curve_matrix[Pal.genes, ]
 
 ```{r}
 ## Cluster gene by expression profiles
-Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Pal_curve_matrix),method = "pearson"))), k= 5)
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Pal_curve_matrix),method = "spearman"))), k= 5)
 
 Pal.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
                              Waves= Pseudotime.genes.clusters$clustering,
@@ -770,9 +790,9 @@ row.names(Pal.Gene.dynamique) <- Pal.Gene.dynamique$Gene
 Pal.Gene.dynamique$Gene.Clusters <- paste0("Clust.", Pal.Gene.dynamique$Gene.Clusters)
 ```
 
-```{r CR gene heatmap}
+```{r fig.dim=c(9, 5)}
 # Order the rows using seriation
-dst <- as.dist((1-cor(scale(t(Pal_curve_matrix)), method = "pearson")))
+dst <- as.dist((1-cor(scale(t(Pal_curve_matrix)), method = "spearman")))
 row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
 gene.order <- rownames(Pal_curve_matrix[get_order(row.ser),])
 
@@ -799,7 +819,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                    main = "")
 ```
 
-```{r}
+```{r fig.dim=c(9, 5)}
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
                     Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
@@ -824,13 +844,14 @@ pheatmap::pheatmap(Pal_curve_matrix[gene.order,200:1],
 ```
 ### Gene cluster trend
 
-```{r}
+```{r fig.dim=c(9,6)}
 Plot.clust.trends(Neuro.trajectories,
                    Lineage = "Pallial",
                    Which.cluster = 1:5,
                    clust.list = Pseudotime.genes.clusters$clustering,
                    Smooth.method = "gam")
 ```
+
 # Session Info
 
 ```{r}
