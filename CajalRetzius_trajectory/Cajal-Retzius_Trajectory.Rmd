@@ -30,6 +30,7 @@ httr::set_config(new_config, override = FALSE)
 library(Seurat)
 library(princurve)
 library(monocle)
+library(gprofiler2)
 library(seriation)
 library(Matrix)
 library(dplyr)
@@ -490,52 +491,14 @@ Neuro.trajectories<- NormalizeData(Neuro.trajectories, normalization.method = "L
 ```
 
 ```{r}
-Neuro.trajectories <- FindVariableFeatures(Neuro.trajectories, selection.method = "vst", nfeatures = 2000, assay = "RNA")
+Neuro.trajectories <- FindVariableFeatures(Neuro.trajectories, selection.method = "disp", nfeatures = 2000, assay = "RNA")
 ```
-
 
 ## Plot some genes along pseudotime
 
-```{r}
-trend <- function(Seurat.data,
-                  group.by,
-                  gene){
-  
-  data <- Seurat.data@meta.data %>% select(Lineage, Pseudotime, Phase)
-  data$Gene <- Seurat.data@assays$RNA@data[gene,]
-  
-  if (!group.by == "Lineage") {
-    p <- ggplot(data=data, aes(x= Pseudotime, y= Gene)) +
-        geom_point(aes(color= Phase), size=0.5) +
-        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
-        geom_smooth(method="loess", n= 50, fill="grey") +
-        ylim(0,NA) +
-        ggtitle(gene)
-  } else {
-    p <- ggplot(data=data, aes(x= Pseudotime, y= Gene)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA) +
-        ggtitle(gene)
-  }
-  
-  
-  return(p)
-}
-
-
-Plot.Genes.trend <- function(Seurat.data,
-                             group.by,
-                             genes){
-  pList <- mapply(FUN = trend, gene = genes,
-                  MoreArgs = list(Seurat.data = Seurat.data, group.by=group.by),
-                  SIMPLIFY = FALSE)
-  print(x = cowplot::plot_grid(plotlist = pList, ncol = 2))
-} 
-```
-
 ```{r fig.dim=c(9,8)}
+source("../Functions/functions_GeneTrends.R")
+
 Plot.Genes.trend(Seurat.data= Neuro.trajectories,
                  group.by = "Lineage",
                  genes= c("Gas1","Sox2",
@@ -612,7 +575,7 @@ pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_
 
 ```{r}
 # Filter genes based on FDR
-pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-40)
+pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-35)
 ```
 
 ## Direction of the DEG by calculating the area between curves (ABC)
@@ -681,22 +644,22 @@ CR_curve_matrix <- CR_curve_matrix[CR.genes, ]
 
 ```{r}
 ## Cluster gene by expression profiles
-Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(CR_curve_matrix),method = "spearman"))), k= 5)
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(CR_curve_matrix),method = "pearson"))), k= 5)
 
-Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
-                             Waves= Pseudotime.genes.clusters$clustering,
-                             Gene.Clusters = Pseudotime.genes.clusters$clustering,
-                             q.val = CR.res$pval,
-                             ABCs= CR.res$ABCs
-                             ) %>% arrange(Gene.Clusters)
+CR.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
+                                 Waves= Pseudotime.genes.clusters$clustering,
+                                 Gene.Clusters = Pseudotime.genes.clusters$clustering,
+                                 q.val = CR.res$qval,
+                                 ABCs= CR.res$ABCs
+                                 ) %>% arrange(Gene.Clusters)
 
-row.names(Gene.dynamique) <- Gene.dynamique$Gene
-Gene.dynamique$Gene.Clusters <- paste0("Clust.",Gene.dynamique$Gene.Clusters)
+row.names(CR.Gene.dynamique) <- CR.Gene.dynamique$Gene
+CR.Gene.dynamique$Gene.Clusters <- paste0("Clust.", CR.Gene.dynamique$Gene.Clusters)
 ```
 
 ```{r CR gene heatmap}
 # Order the rows using seriation
-dst <- as.dist((1-cor(scale(t(CR_curve_matrix)), method = "spearman")))
+dst <- as.dist((1-cor(scale(t(CR_curve_matrix)), method = "pearson")))
 row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
 gene.order <- rownames(CR_curve_matrix[get_order(row.ser),])
 
@@ -712,7 +675,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
-                   annotation_row = Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
                    annotation_col = data.frame(lineage = rep(c("Pallial_neurons","Cajal_Retzius"), each=200)),
                    annotation_colors = anno.colors,
                    show_colnames = F,
@@ -734,7 +697,7 @@ pheatmap::pheatmap(CR_curve_matrix[gene.order,],
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
-                   annotation_row = Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
                    annotation_col = col.anno,
                    annotation_colors = anno.colors,
                    gaps_col = 100,
@@ -746,6 +709,39 @@ pheatmap::pheatmap(CR_curve_matrix[gene.order,],
                    main = "")
 
 ```
+### Gene cluster trend
+
+```{r}
+source("../Functions/functions_GeneClusterTrend.R")
+
+Plot.clust.trends(Neuro.trajectories,
+                   Lineage = "Hem",
+                   Which.cluster = 1:5,
+                   clust.list = Pseudotime.genes.clusters$clustering,
+                   Smooth.method = "gam")
+```
+### GO term enrichment in gene clusters using gprofiler2
+
+```{r}
+CR.gostres <- gost(query = list("Clust.1" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.1") %>% pull(Gene) %>% as.character(),
+                             "Clust.2" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.2") %>% pull(Gene) %>% as.character(),
+                             "Clust.3" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.3") %>% pull(Gene) %>% as.character(),
+                             "Clust.4" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.4") %>% pull(Gene) %>% as.character(),
+                             "Clust.5" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.5") %>% pull(Gene) %>% as.character()),
+                organism = "mmusculus", ordered_query = F, 
+                multi_query = F, significant = T, exclude_iea = T, 
+                measure_underrepresentation = F, evcodes = T, 
+                user_threshold = 0.05, correction_method = "fdr", 
+                domain_scope = "annotated", custom_bg = NULL, 
+                numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+```
+
+```{r}
+Signaling_And_Death_GOterm <- CR.gostres$result[CR.gostres$result$term_id %in% c("GO:0007267", "GO:0005102", "GO:0048018", "GO:0070997", "GO:0051402"),]
+
+Signaling_And_Death_GOterm[,c(1,2,3,5,6,7,11)]
+```
+
 
 ## Pallial neuron trajectory analysis
 
@@ -761,7 +757,7 @@ Pal_curve_matrix <- Pal_curve_matrix[Pal.genes, ]
 
 ```{r}
 ## Cluster gene by expression profiles
-Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Pal_curve_matrix),method = "spearman"))), k= 5)
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Pal_curve_matrix),method = "pearson"))), k= 5)
 
 Pal.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
                              Waves= Pseudotime.genes.clusters$clustering,
@@ -776,7 +772,7 @@ Pal.Gene.dynamique$Gene.Clusters <- paste0("Clust.", Pal.Gene.dynamique$Gene.Clu
 
 ```{r CR gene heatmap}
 # Order the rows using seriation
-dst <- as.dist((1-cor(scale(t(Pal_curve_matrix)), method = "spearman")))
+dst <- as.dist((1-cor(scale(t(Pal_curve_matrix)), method = "pearson")))
 row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
 gene.order <- rownames(Pal_curve_matrix[get_order(row.ser),])
 
@@ -826,7 +822,15 @@ pheatmap::pheatmap(Pal_curve_matrix[gene.order,200:1],
                    main = "")
 
 ```
+### Gene cluster trend
 
+```{r}
+Plot.clust.trends(Neuro.trajectories,
+                   Lineage = "Pallial",
+                   Which.cluster = 1:5,
+                   clust.list = Pseudotime.genes.clusters$clustering,
+                   Smooth.method = "gam")
+```
 # Session Info
 
 ```{r}
