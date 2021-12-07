@@ -75,6 +75,7 @@ DimPlot(Neurons.data ,
         pt.size = 1,
         cols =  c("#b7d174")) + NoAxes()
 ```
+
 ## Split Pallial from Cajal-Retzius cells
 
 ```{r}
@@ -94,6 +95,7 @@ p2 <- FeaturePlot(object = Neurons.data ,
 
 p1 / p2
 ```
+
 Separation between the 2 lineage seems straightforward. We use louvain clustering to split the two.
 
 ```{r}
@@ -105,12 +107,14 @@ Neurons.data <- FindNeighbors(Neurons.data,
 
 Neurons.data <- FindClusters(Neurons.data, resolution = 0.05)
 ```
+
 ```{r}
 DimPlot(Neurons.data,
         reduction = "spring",
         cols = c("#cc391b","#026c9a"),
         pt.size = 0.5) & NoAxes()
 ```
+
 ```{r}
 Neurons.data$Lineage <- sapply(as.numeric(Neurons.data$SCT_snn_res.0.05),
                                FUN = function(x) {x= c("Hem","Pallial")[x]})
@@ -123,6 +127,7 @@ DimPlot(object = Neurons.data,
         cols = c("#cc391b","#026c9a"),
         pt.size = 0.5) & NoAxes()
 ```
+
 ## Fit principale curve on the two lineages
 
 ### Cajal-Retzius cells
@@ -147,6 +152,7 @@ Hem.pc.line <- as.data.frame(fit$s[order(fit$lambda),])
 Trajectories.Hem$PseudotimeScore <- fit$lambda/max(fit$lambda)
 
 ```
+
 ```{r}
 if (cor(Trajectories.Hem$PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', Trajectories.Hem$Barcodes]) > 0) {
   Trajectories.Hem$PseudotimeScore <- -(Trajectories.Hem$PseudotimeScore - max(Trajectories.Hem$PseudotimeScore))
@@ -197,6 +203,7 @@ ggplot(Trajectories.neurons, aes(Spring_1, Spring_2)) +
   geom_line(data=Pallial.pc.line, color="#026c9a", size=0.77) +
   geom_line(data=Hem.pc.line, color="#cc391b", size=0.77)
 ```
+
 ## Plot pan-neuronal genes along this axis
 
 ```{r}
@@ -270,6 +277,7 @@ ggplot(Pseudotime.intervals, aes(x=Pseudotime.bins, y=n, fill=Lineage)) +
         theme(axis.text.x = element_text(angle = 45, hjust=1))+
         scale_fill_manual(values= c("#cc391b", "#026c9a"))
 ```
+
 ```{r}
 score <- sapply(Trajectories.neurons$PseudotimeScore,
                 FUN = function(x) if (x <= 0.2) {x= 0.2} else { x=x })
@@ -323,6 +331,7 @@ p6 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= Mapt)) +
 
 p1 + p2 + p3 + p4 + p5 + p6 + patchwork::plot_layout(ncol = 2)
 ```
+
 ```{r}
 ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= nUMI/10000)) +
         geom_point(aes(color= Lineage), size=0.5) +
@@ -330,6 +339,7 @@ ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= nUMI/10000)) +
         geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
         ylim(0,NA)
 ```
+
 ```{r}
 rm(list = ls()[!ls() %in% c("Trajectories.neurons")])
 ```
@@ -380,7 +390,6 @@ Trajectories.all <- Trajectories.neurons %>% select(Barcodes, nUMI, Spring_1, Sp
 
 Trajectories.all$Pseudotime <- Trajectories.neurons$PseudotimeScore.shifted + 1
 Trajectories.all$Phase <- NA
-
 ```
 
 ```{r}
@@ -390,8 +399,6 @@ Trajectories.progenitors <- Progenitors.data@meta.data %>%
                               mutate(Lineage= ifelse(Progenitors.data$Cell_ident == "Medial_pallium", "Pallial", "Hem") ,
                                      Pseudotime= Progenitors.data$Angle.cc,
                                      Phase = Progenitors.data$Revelio.phase)
-                              
-
 ```
 
 ```{r}
@@ -427,6 +434,7 @@ p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
 
 p1 + p2
 ```
+
 ```{r}
 rm(list = ls()[!ls() %in% c("Trajectories.all")])
 ```
@@ -484,6 +492,8 @@ Neuro.trajectories<- NormalizeData(Neuro.trajectories, normalization.method = "L
 ```{r}
 Neuro.trajectories <- FindVariableFeatures(Neuro.trajectories, selection.method = "vst", nfeatures = 2000, assay = "RNA")
 ```
+
+
 ## Plot some genes along pseudotime
 
 ```{r}
@@ -549,6 +559,8 @@ Plot.Genes.trend(Seurat.data= Neuro.trajectories,
                  genes= c("Mki67", "Top2a",
                           "H2afx", "Cdkn1c"))
 ```
+
+
 # Use monocle2 to model gene expression along cycling axis
 
 ## Initialize a monocle object
@@ -587,6 +599,7 @@ gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
 rm(list = ls()[!ls() %in% c("Neuro.trajectories", "gbm_cds", "Gene.Trend", "Plot.Genes.trend")])
 gc()
 ```
+
 ## Test each gene trend over pseudotime score
 
 ### Find genes DE along pseudomaturation axis
