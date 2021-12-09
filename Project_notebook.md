@@ -1,3 +1,11 @@
+# 09-12-21
+
+-   ChoroidPlexus.Rmd
+
+    -   [X] Filter-out contaminating septal progenitors (Fgf8)
+    -   [X] Fit principal curve along progenitors and multiciliating ChP
+    -   [X] Fit cell cycle axis using Revelio on progenitors alone
+    
 # 07-12-21
 
 -   Cajal-Retzius_Trajectory.Rmd
