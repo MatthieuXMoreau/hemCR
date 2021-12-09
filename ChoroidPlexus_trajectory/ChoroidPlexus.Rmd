@@ -1,0 +1,471 @@
+---
+title: "choroid Plexus"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
+
+# To use biomart 
+new_config <- httr::config(ssl_verifypeer = FALSE)
+httr::set_config(new_config, override = FALSE)
+```
+
+In this part of the analysis we apply [Revelio](https://github.com/danielschw188/Revelio) algorithm to explore cell cycle dynamic of pallial and hem domain radial glial cells
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(Revelio)
+library(princurve)
+library(orthologsBioMART)
+library(Matrix)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# Load and filter progenitors data
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+```
+
+```{r}
+DimPlot(object = Hem.data,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#83c3b8", #"ChP"
+                 "#009fda", #"ChP_progenitors"
+                 "#68b041", #"Dorso-Medial_pallium"
+                 "#e46b6b", #"Hem"
+                 "#e3c148", #"Medial_pallium"
+                 "#b7d174", #2
+                 "grey40", #4
+                 "black", #5
+                 "#3e69ac" #"Thalamic_eminence"
+                 ))
+```
+```{r}
+Idents(Hem.data) <- Hem.data$Cell_ident
+```
+
+# Fit Pseudotime axis on ChP cells
+
+```{r}
+ChP.data <-  subset(Hem.data, idents = c("ChP", "ChP_progenitors"))
+
+DimPlot(ChP.data,
+        reduction = "spring",
+        pt.size = 1,
+        cols =  c("#83c3b8", "#009fda")) + NoAxes()
+```
+
+## Exclude septal cells
+
+```{r}
+FeaturePlot(object = ChP.data ,
+            features = c("Fgf8", "Fgf17", "Adamts15", "Fgfbp1"),
+            pt.size = 0.5,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "spring",
+            order = T) & NoAxes() & NoLegend()
+
+```
+
+```{r}
+ChP.data <- AddModuleScore(ChP.data,
+                           features = list(c("Fgf8", "Fgf17", "Adamts15", "Fgfbp1")),
+                           ctrl = 10,
+                           name = "Septum")
+
+FeaturePlot(object = ChP.data ,
+            features = c("Septum1"),
+            pt.size = 0.5,
+            cols = rev(brewer.pal(10,"Spectral")),
+            reduction = "spring",
+            order = T) & NoAxes()
+```
+
+```{r}
+hist(ChP.data$Septum1, breaks = 20)
+
+ChP.data$Septal.prog <- ChP.data$Septum1 > 0.1
+```
+
+```{r}
+p1 <- DimPlot(ChP.data,
+        reduction = "spring",
+        group.by = "Septal.prog",
+        pt.size = 1) + NoAxes()
+
+p2 <- FeaturePlot(object = ChP.data ,
+            features = c("Fgf17"),
+            pt.size = 0.5,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "spring",
+            order = T) & NoAxes() & NoLegend()
+
+p1 + p2
+```
+
+```{r}
+ChP.data <- subset(ChP.data,
+                   subset = Septal.prog == FALSE & ChP.data$Spring_1 > 1300)
+```
+
+```{r}
+DimPlot(ChP.data,
+        reduction = "spring",
+        pt.size = 1,
+        cols =  c("#83c3b8", "#009fda")) + NoAxes()
+```
+## Fit principal curve
+
+```{r}
+Trajectories.ChP <- ChP.data@meta.data %>%
+                    select("Barcodes", "nUMI", "Spring_1", "Spring_2")
+```
+
+```{r}
+fit <- principal_curve(as.matrix(Trajectories.ChP[,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=TRUE,
+                       f = 0.8, 
+                       stretch=2)
+
+#The principal curve smoothed
+ChP.pc.line <- as.data.frame(fit$s[order(fit$lambda),]) 
+
+#Pseudotime score
+Trajectories.ChP$Pseudotime <- fit$lambda/max(fit$lambda)
+
+#Inverse the score if positive correlation with progenitor marker
+if (cor(Trajectories.ChP$Pseudotime, ChP.data@assays$SCT@data['Hmga2', Trajectories.ChP$Barcodes]) > 0) {
+  Trajectories.ChP$Pseudotime <- -(Trajectories.ChP$Pseudotime - max(Trajectories.ChP$Pseudotime))
+}
+
+ChP.data$Pseudotime <- Trajectories.ChP$Pseudotime
+```
+
+```{r}
+FeaturePlot(object = ChP.data,
+            features = "Pseudotime",
+            pt.size = 2,
+            cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
+            reduction = "spring",
+            order = T) & NoAxes()
+```
+
+# Subset progenitors and fit cell cycle axis
+
+```{r}
+Prog.data <-  subset(ChP.data, idents = c("ChP_progenitors"))
+
+DimPlot(Prog.data,
+        reduction = "spring",
+        pt.size = 1,
+        cols =  c("#009fda")) + NoAxes()
+```
+```{r}
+Prog.data <- NormalizeData(Prog.data, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+```
+
+
+## Prepare data for revelio input
+
+### Find mous ortologues to provided human cell cycle genes
+
+```{r}
+Cellcyclegenes <- revelioTestData_cyclicGenes
+head(Cellcyclegenes)
+```
+
+We use [orthologsBioMART](https://vitkl.github.io/orthologsBioMART/index.html) library to map human to mouse mouse orthologs
+
+```{r cache=TRUE}
+G1.S <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$G1.S), 
+                          to_attributes = "external_gene_name")
+
+S <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$S), 
+                          to_attributes = "external_gene_name")
+
+G2 <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$G2), 
+                          to_attributes = "external_gene_name")
+
+G2.M <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$G2.M), 
+                          to_attributes = "external_gene_name")
+
+M.G1 <- findOrthologsHsMm(from_filters = "hgnc_symbol",
+                          from_values = as.character(Cellcyclegenes$M.G1), 
+                          to_attributes = "external_gene_name")
+
+
+gene.list <- list(G1.S$external_gene_name,
+                  S$external_gene_name,
+                  G2$external_gene_name,
+                  G2.M$external_gene_name,
+                  M.G1$external_gene_name)
+
+CCgenes <- t(plyr::ldply(gene.list, rbind))
+
+colnames(CCgenes) <- colnames(Cellcyclegenes)
+```
+
+
+### Export counts matrix
+
+```{r}
+rawCounts <- as.matrix(Prog.data[["RNA"]]@counts)
+```
+
+```{r}
+# Filter genes expressed by less than 10 cells
+num.cells <- Matrix::rowSums(rawCounts > 0)
+genes.use <- names(x = num.cells[which(x = num.cells >= 10)])
+rawCounts <- rawCounts[genes.use, ]
+```
+
+```{r}
+rm(list = ls()[!ls() %in% c("rawCounts", "CCgenes", "ChP.data", "Prog.data")])
+gc()
+```
+
+## Run Revelio
+
+
+We can now follow the tutorial form the [package github page](https://github.com/danielschw188/Revelio) 
+
+```{r cache=TRUE}
+myData <- createRevelioObject(rawData = rawCounts,
+                              cyclicGenes = CCgenes,
+                              lowernGeneCutoff = 0,
+                              uppernUMICutoff = Inf,
+                              ccPhaseAssignBasedOnIndividualBatches = F)
+
+rm("rawCounts")
+gc()
+```
+
+The `getCellCyclePhaseAssignInformation` filter "outlier" cells for cell cycle phase assignation. We modified the function to keep all cells as we observed this does not affect the global cell cycle fitting procedure
+
+
+```{r cache=TRUE}
+source("../Functions/functions_InitializationCCPhaseAssignFiltering.R")
+
+myData <- getCellCyclePhaseAssign_allcells(myData)
+```
+
+```{r cache=TRUE}
+myData <- getPCAData(dataList = myData)
+```
+
+
+```{r cache=TRUE}
+myData <- getOptimalRotation(dataList = myData)
+gc()
+```
+
+
+## Compare results between different ordering approched applied to the DC space
+
+### Comparison of Revelio cell cycle ordering and *Angle* method
+
+To obtain the best linear ordering of cell along G1 to M phase we compare the output `ccPercentageUniformlySpaced' form Revelio and the one obtained with the [*Angle*](https://github.com/dynverse/ti_angle) method describe in [Saelens et. al. Nature Biotechnology 2019](https://www.nature.com/articles/s41587-019-0071-9)
+
+New dataframe 
+
+```{r}
+CellCycledata <- cbind(as.data.frame(t(myData@transformedData$dc$data[1:2,])),
+                       nUMI= myData@cellInfo$nUMI,
+                       Revelio.phase = factor(myData@cellInfo$ccPhase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1")),
+                       Revelio.cc= myData@cellInfo$ccPercentageUniformlySpaced,
+                       Seurat.cc= Prog.data@meta.data[myData@cellInfo$cellID,"CC.Difference"])
+```
+
+Compute cycling trajectory with Angle 
+
+```{r}
+CellCycledata$Angle.cc <- atan2(CellCycledata$DC1, CellCycledata$DC2) / 2 / pi + .5
+```
+
+### Cells distribution in the DC1-DC2 space
+
+```{r}
+ggplot(CellCycledata, aes(DC1, DC2)) +
+        geom_point(aes(color = Revelio.phase)) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+```
+
+```{r}
+p1 <- ggplot(CellCycledata, aes(DC1, DC2)) +
+        geom_point(aes(color = Revelio.phase)) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+
+p2 <- ggplot(CellCycledata, aes(DC1, DC2)) +
+        geom_point(aes(color=Seurat.cc), size=2, shape=16) + 
+        scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
+                              name='Seurat_cc')
+
+p3 <- ggplot(CellCycledata, aes(DC1, DC2)) +
+        geom_point(aes(color=Angle.cc), size=2, shape=16) + 
+        scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
+                              name='Angle.cc')
+
+p4 <- ggplot(CellCycledata, aes(DC1, DC2)) +
+        geom_point(aes(color=Revelio.cc), size=2, shape=16) + 
+        scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
+                              name='Revelio_cc')
+
+
+(p1+p2)/(p3+p4)
+```
+
+
+```{r}
+ggplot(CellCycledata, aes(x= Revelio.cc, y= nUMI/10000)) +
+        geom_point(aes(color= Revelio.phase), size=0.5) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+        geom_smooth(method="loess", n= 50, fill="grey") +
+        ylim(0,NA)
+```
+
+## Import coordinates
+
+```{r}
+Prog.data$Revelio.DC1 <- CellCycledata$DC1
+Prog.data$Revelio.DC2 <- CellCycledata$DC2
+
+Prog.data$Revelio.phase <- CellCycledata$Revelio.phase
+
+Prog.data$Angle.cc <- CellCycledata$Angle.cc
+Prog.data$Revelio.cc <- CellCycledata$Revelio.cc
+```
+
+```{r fig.dim=c(6, 9)}
+p1 <- FeaturePlot(object = Prog.data,
+            features = "Revelio.cc",
+            pt.size = 1,
+            cols = rev(brewer.pal(10,"Spectral")),
+            reduction = "spring",
+            order = T) & NoAxes()
+
+p2 <- DimPlot(object = Prog.data,
+        group.by = "Revelio.phase",
+        pt.size = 1,
+        reduction = "spring",
+        cols =  c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) & NoAxes()
+
+p3 <- FeaturePlot(object = Prog.data,
+            features = "Pseudotime",
+            pt.size = 2,
+            cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
+            reduction = "spring",
+            order = T) & NoAxes()
+
+p1 + p2 + p3 
+```
+
+```{r}
+Trajectories.progenitors <- Prog.data@meta.data %>%
+                              select(Barcodes, nUMI, Spring_1, Spring_2, Pseudotime) %>% 
+                              mutate(Cycling.axis= Prog.data$Revelio.cc,
+                                     Phase = Prog.data$Revelio.phase,
+                                     Gmnc= Prog.data@assays$RNA@data["Gmnc",],
+                                     Ttr= Prog.data@assays$RNA@data["Ttr",],
+                                     Htr2c= Prog.data@assays$RNA@data["Htr2c",],
+                                     Top2a= Prog.data@assays$RNA@data["Top2a",])
+```
+
+```{r}
+p1 <- ggplot(Trajectories.progenitors, aes(x= Pseudotime, y= Cycling.axis)) +
+        geom_point(aes(color= Phase), size=1.5) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+
+p2 <- Trajectories.progenitors %>% arrange(Gmnc) %>%
+      ggplot(aes(x= Pseudotime, y= Cycling.axis)) +
+        geom_point(aes(color=Gmnc), size=1.5) +
+        scale_color_gradientn(colours =c("grey90", brewer.pal(9,"YlGnBu")))
+
+p3 <- Trajectories.progenitors %>% arrange(Ttr) %>%
+      ggplot(aes(x= Pseudotime, y= Cycling.axis)) +
+        geom_point(aes(color=Ttr), size=1.5) +
+        scale_color_gradientn(colours =c("grey90", brewer.pal(9,"YlGnBu")))
+
+p4 <- Trajectories.progenitors %>% arrange(Htr2c) %>%
+      ggplot(aes(x= Pseudotime, y= Cycling.axis)) +
+        geom_point(aes(color=Htr2c), size=1.5) +
+        scale_color_gradientn(colours =c("grey90", brewer.pal(9,"YlGnBu")))
+
+p1 + p2 + p3 + p4  + patchwork::plot_layout(ncol = 2)
+```
+
+
+```{r fig.dim=c(9,3)}
+p1 <- ggplot(Trajectories.progenitors, aes(x= Cycling.axis, y= Gmnc)) +
+        geom_point(aes(color= Phase), size=0.5) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+        geom_smooth(method="loess", n= 50) +
+        ylim(0,NA)
+
+p2 <- ggplot(Trajectories.progenitors, aes(x= Cycling.axis, y= Top2a)) +
+        geom_point(aes(color= Phase), size=0.5) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+        geom_smooth(method="loess", n= 50) +
+        ylim(0,NA)
+
+p1 + p2
+```
+
+```{r}
+rm(list = ls()[!ls() %in% c("Trajectories.progenitors", "ChP.data")])
+gc()
+```
+Import progenitors cycling coordinates in the full dataset
+
+```{r}
+ChP.data$Cycling.axis <- sapply(ChP.data$Barcodes,
+                              FUN = function(x) {
+                                if (x %in% Trajectories.progenitors$Barcodes) {
+                                  x = Trajectories.progenitors[x, "Cycling.axis"]
+                                } else {
+                                  x = NA
+                                  }
+                              })
+```
+
+
+
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
