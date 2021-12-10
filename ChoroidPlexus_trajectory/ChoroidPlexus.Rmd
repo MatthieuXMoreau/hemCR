@@ -1,5 +1,5 @@
 ---
-title: "choroid Plexus"
+title: "Choroid plexus differentiation trajectory"
 author:
    - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -32,6 +32,7 @@ In this part of the analysis we apply [Revelio](https://github.com/danielschw188
 library(Seurat)
 library(Revelio)
 library(princurve)
+library(monocle)
 library(orthologsBioMART)
 library(Matrix)
 library(dplyr)
@@ -144,7 +145,7 @@ DimPlot(ChP.data,
 
 ```{r}
 Trajectories.ChP <- ChP.data@meta.data %>%
-                    select("Barcodes", "nUMI", "Spring_1", "Spring_2")
+                    dplyr::select("Barcodes", "nUMI", "Spring_1", "Spring_2")
 ```
 
 ```{r}
@@ -392,7 +393,7 @@ p1 + p2 + p3
 
 ```{r}
 Trajectories.progenitors <- Prog.data@meta.data %>%
-                              select(Barcodes, nUMI, Spring_1, Spring_2, Pseudotime) %>% 
+                              dplyr::select(Barcodes, nUMI, Spring_1, Spring_2, Pseudotime) %>% 
                               mutate(Cycling.axis= Prog.data$Revelio.cc,
                                      Phase = Prog.data$Revelio.phase,
                                      Gmnc= Prog.data@assays$RNA@data["Gmnc",],
@@ -458,6 +459,142 @@ ChP.data$Cycling.axis <- sapply(ChP.data$Barcodes,
                               })
 ```
 
+```{r}
+FeaturePlot(object = ChP.data,
+            features = "Pseudotime",
+            pt.size = 2,
+            cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
+            reduction = "spring",
+            order = T) & NoAxes()
+```
+
+
+# Use monocle2 to model gene expression along differentition axis
+
+```{r}
+ChP.data <- NormalizeData(ChP.data, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+
+ChP.data <- FindVariableFeatures(ChP.data, selection.method = "disp", nfeatures = 3000, assay = "RNA")
+```
+
+
+## Initialize a monocle object
+
+```{r}
+# Transfer metadata
+meta.data <- data.frame(Barcode= ChP.data$Barcodes,
+                        Pseudotime= ChP.data$Pseudotime,
+                        Cell.cycle= ChP.data$Phase)
+
+Annot.data  <- new('AnnotatedDataFrame', data = meta.data)
+
+# Transfer counts data
+var.genes <- ChP.data[["RNA"]]@var.features
+count.data = data.frame(gene_short_name = rownames(ChP.data[["RNA"]]@data[var.genes,]),
+                        row.names = rownames(ChP.data[["RNA"]]@data[var.genes,]))
+
+feature.data <- new('AnnotatedDataFrame', data = count.data)
+
+# Create the CellDataSet object including variable genes only
+gbm_cds <- newCellDataSet(ChP.data[["RNA"]]@counts[var.genes,],
+                          phenoData = Annot.data,
+                          featureData = feature.data,
+                          lowerDetectionLimit = 0,
+                          expressionFamily = negbinomial())
+```
+
+```{r}
+gbm_cds <- estimateSizeFactors(gbm_cds)
+gbm_cds <- estimateDispersions(gbm_cds)
+gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
+```
+```{r}
+rm(list = ls()[!ls() %in% c("ChP.data", "gbm_cds")])
+gc()
+```
+
+## Test each gene trend over pseudotime score
+
+```{r}
+pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed >= 30,], 
+                                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)*Cell.cycle", 
+                                                 reducedModelFormulaStr = "~Cell.cycle", 
+                                                 cores = parallel::detectCores() - 2)
+```
+
+```{r}
+# Filter genes based on FDR
+pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 5e-10)
+```
+
+## Smooth expression of significative genes
+
+```{r}
+# Create a new vector of 200 points
+nPoints <- 200
+new_data <- data.frame(Pseudotime = seq(min(pData(gbm_cds)$Pseudotime), max(pData(gbm_cds)$Pseudotime), length.out = nPoints))
+
+# Smooth gene expression
+Smooth.curve.matrix <- genSmoothCurves(gbm_cds[as.character(pseudo.maturation.diff.filtered$gene_short_name),],
+                                       trend_formula = "~sm.ns(Pseudotime, df = 3)",
+                                       relative_expr = TRUE,
+                                       new_data = new_data,
+                                       cores= parallel::detectCores() - 2)
+```
+
+## Cluster genes and plot heatmap
+
+```{r}
+## Cluster gene by expression profiles
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Smooth.curve.matrix),method = "spearman"))), k= 5)
+
+ChP.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
+                                 Waves= Pseudotime.genes.clusters$clustering,
+                                 Gene.Clusters = Pseudotime.genes.clusters$clustering,
+                                 q.val = pseudo.maturation.diff.filtered$qval
+                                 ) %>% arrange(Gene.Clusters)
+
+row.names(ChP.Gene.dynamique) <- ChP.Gene.dynamique$Gene
+ChP.Gene.dynamique$Gene.Clusters <- paste0("Clust.", ChP.Gene.dynamique$Gene.Clusters)
+```
+
+```{r}
+# Order the rows using seriation
+dst <- as.dist((1-cor(scale(t(Smooth.curve.matrix)), method = "spearman")))
+row.ser <- seriation::seriate(dst, method ="OLO") #"R2E" #TSP #"GW" "GW_ward"
+gene.order <- rownames(Smooth.curve.matrix[seriation::get_order(row.ser),])
+
+pal <- wes_palette("Darjeeling1")
+anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
+
+col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), each=100))
+
+pheatmap::pheatmap(Smooth.curve.matrix[gene.order,],
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = ChP.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   #annotation_col = col.anno,
+                   annotation_colors = anno.colors,
+                   gaps_col = 100,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+```
+
+```{r}
+source("../Functions/functions_GeneClusterTrend.R")
+
+Plot.clust.trends(ChP.data,
+                   Lineage = "ChP",
+                   Which.cluster = 1:5,
+                   clust.list = Pseudotime.genes.clusters$clustering,
+                   Smooth.method = "gam")
+```
 
 
 # Session Info
