@@ -685,6 +685,28 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
 ```
+We manually correct the reordering so genes are aligned from top left to bottom rigth
+
+```{r fig.dim=c(9, 5)}
+gene.order <- gene.order[c(245:1,612:246)]
+
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(200:1,#Pal 
+                                  201:400)], #CR
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(lineage = rep(c("Pallial_neurons","Cajal_Retzius"), each=200)),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+```
+
 
 ```{r fig.dim=c(9, 5)}
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
@@ -777,7 +799,7 @@ Pal_curve_matrix <- Pal_curve_matrix[Pal.genes, ]
 
 ```{r}
 ## Cluster gene by expression profiles
-Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Pal_curve_matrix),method = "spearman"))), k= 5)
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Pal_curve_matrix),method = "pearson"))), k= 5)
 
 Pal.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
                              Waves= Pseudotime.genes.clusters$clustering,
@@ -792,7 +814,7 @@ Pal.Gene.dynamique$Gene.Clusters <- paste0("Clust.", Pal.Gene.dynamique$Gene.Clu
 
 ```{r fig.dim=c(9, 5)}
 # Order the rows using seriation
-dst <- as.dist((1-cor(scale(t(Pal_curve_matrix)), method = "spearman")))
+dst <- as.dist((1-cor(scale(t(Pal_curve_matrix)), method = "pearson")))
 row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
 gene.order <- rownames(Pal_curve_matrix[get_order(row.ser),])
 
@@ -818,6 +840,29 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
 ```
+We manually correct the reordering so genes are aligned from top right to bottom left
+
+```{r fig.dim=c(9, 5)}
+gene.order <- gene.order[c(199:1,352:200)]
+
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(200:1,#Pal
+                                  201:400)], #CR
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = Pal.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(lineage = rep(c("Pallial_neurons","Cajal_Retzius"), each=200)),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+```
+
+
 
 ```{r fig.dim=c(9, 5)}
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
