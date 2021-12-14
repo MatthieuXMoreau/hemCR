@@ -29,6 +29,7 @@ httr::set_config(new_config, override = FALSE)
 ```{r message=FALSE, warning=FALSE}
 library(Seurat)
 library(monocle)
+library(Oscope)
 library(Matrix)
 library(dplyr)
 library(RColorBrewer)
@@ -195,17 +196,100 @@ gc()
 ### Find genes DE along pseudomaturation axis
 
 ```{r message=FALSE, warning=FALSE}
-pseudo.maturation.diff <- differentialGeneTest(gbm_cds, 
+pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed > 80,], 
                                                  fullModelFormulaStr = "~sm.ns(Revelio.cc, df = 3)*domain", 
-                                                 reducedModelFormulaStr = "~sm.ns(Revelio.cc, df = 3)", 
+                                                 reducedModelFormulaStr = "~domain", 
                                                  cores = parallel::detectCores() - 2)
 
 ```
 
 ```{r}
 # Filter genes based on FDR
-pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 5e-3)
+pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 5e-10)
 ```
+
+## Smooth expression of significative genes
+
+```{r}
+# Create a new vector of 200 points
+nPoints <- 200
+new_data <- data.frame(Revelio.cc = seq(min(pData(gbm_cds)$Revelio.cc), max(pData(gbm_cds)$Revelio.cc), length.out = nPoints))
+
+# Smooth gene expression
+Smooth.curve.matrix <- genSmoothCurves(gbm_cds[as.character(pseudo.maturation.diff.filtered$gene_short_name),],
+                                       trend_formula = "~sm.ns(Revelio.cc, df = 3)",
+                                       relative_expr = TRUE,
+                                       new_data = new_data,
+                                       cores= parallel::detectCores() - 2)
+```
+
+## Cluster genes and plot heatmap
+
+```{r}
+## Cluster gene by expression profiles
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Smooth.curve.matrix),method = "spearman"))), k= 5)
+
+Ccycle.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
+                                 Waves= Pseudotime.genes.clusters$clustering,
+                                 Gene.Clusters = Pseudotime.genes.clusters$clustering,
+                                 q.val = pseudo.maturation.diff.filtered$qval
+                                 ) %>% arrange(Gene.Clusters)
+
+row.names(Ccycle.Gene.dynamique) <- Ccycle.Gene.dynamique$Gene
+Ccycle.Gene.dynamique$Gene.Clusters <- paste0("Clust.", Ccycle.Gene.dynamique$Gene.Clusters)
+```
+
+```{r}
+# Order the rows using seriation
+dst <- as.dist((1-cor(scale(t(Smooth.curve.matrix)), method = "spearman")))
+row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
+gene.order <- rownames(Smooth.curve.matrix[seriation::get_order(row.ser),])
+
+pal <- wes_palette("Darjeeling1")
+anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
+
+col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), each=100))
+
+pheatmap::pheatmap(Smooth.curve.matrix[gene.order,],
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = Ccycle.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   #annotation_col = col.anno,
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+```
+# Oscope analysis
+
+```{r}
+data <- as.matrix(Progenitors.data[["RNA"]]@counts[gene.order,])
+```
+
+libraries size normalization
+ 
+```{r}
+Sizes <- MedianNorm(data)
+DataNorm <- GetNormalizedMat(data, Sizes)
+```
+
+Resacling
+
+```{r}
+DataInput <- NormForSine(DataNorm)
+```
+
+## Oscope: paired-sine model
+
+```{r}
+SineRes <- OscopeSine(DataInput)
+```
+
 
 # Session Info
 
