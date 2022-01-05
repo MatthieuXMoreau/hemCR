@@ -757,6 +757,9 @@ CR.gostres <- gost(query = list("Clust.1" = CR.Gene.dynamique %>% filter(Gene.Cl
                 user_threshold = 0.05, correction_method = "fdr", 
                 domain_scope = "annotated", custom_bg = NULL, 
                 numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+
+write.table(apply(CR.gostres$result,2,as.character),
+            "CR_GO_res-by-waves.csv", sep = ";", quote = F, row.names = F)
 ```
 
 ```{r}
@@ -774,6 +777,9 @@ CR.gostres <- gost(query = as.character(CR.Gene.dynamique$Gene),
                 user_threshold = 0.05, correction_method = "fdr", 
                 domain_scope = "annotated", custom_bg = NULL, 
                 numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+
+write.table(apply(CR.gostres$result,2,as.character),
+            "CR_GO_res.csv", sep = ";", quote = F, row.names = F)
 ```
 
 
