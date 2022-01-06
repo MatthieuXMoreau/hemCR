@@ -8,6 +8,9 @@ Hem_metadata.csv
 *_cache
 *_files
 
+*gene_order_file.txt
+*lineage.txt
+
 # Template from https://github.com/github/gitignore/blob/master/R.gitignore
 
 # History files
