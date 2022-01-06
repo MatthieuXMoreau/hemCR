@@ -36,7 +36,6 @@ infercnv.heatmap_thresholds.txt
 infercnv.observation_groupings.txt
 infercnv.observations.txt
 infercnv.observations_dendrogram.txt
-infercnv.png
 infercnv.preliminary.heatmap_thresholds.txt
 infercnv.preliminary.observation_groupings.txt
 infercnv.preliminary.observations.txt
@@ -46,3 +45,6 @@ infercnv.preliminary.references.txt
 infercnv.references.txt
 preliminary.infercnv_obj
 run.final.infercnv_obj
+map_metadata_from_infercnv.txt
+top_losses.txt
+top_duplis.txt
