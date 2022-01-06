@@ -1,0 +1,165 @@
+---
+title: "Infer CNV in CR cells and choroid plexus"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
+
+# To use biomart 
+new_config <- httr::config(ssl_verifypeer = FALSE)
+httr::set_config(new_config, override = FALSE)
+```
+
+In this part of the analysis we apply [InferCNV](https://github.com/danielschw188/Revelio) algorithm to explore occurrence of CNV in CR and CPx cells
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(infercnv)
+library(biomaRt)
+
+library(Matrix)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# Load the full dataset
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+Idents(Hem.data) <- Hem.data$Cell_ident
+```
+
+```{r}
+DimPlot(object = Hem.data,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#83c3b8", #"ChP"
+                 "#009fda", #"ChP_progenitors"
+                 "#68b041", #"Dorso-Medial_pallium"
+                 "#e46b6b", #"Hem"
+                 "#e3c148", #"Medial_pallium"
+                 "#b7d174", #2
+                 "grey40", #4
+                 "black", #5
+                 "#3e69ac" #"Thalamic_eminence"
+                 ))
+```
+```{r}
+Hem.data <-  subset(Hem.data, subset = orig.ident == "Hem1" )
+```
+
+```{r}
+DimPlot(object = Hem.data,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#83c3b8", #"ChP"
+                 "#009fda", #"ChP_progenitors"
+                 "#68b041", #"Dorso-Medial_pallium"
+                 "#e46b6b", #"Hem"
+                 "#e3c148", #"Medial_pallium"
+                 "#b7d174", #2
+                 "grey40", #4
+                 "black", #5
+                 "#3e69ac" #"Thalamic_eminence"
+                 ))
+```
+
+# inferCNV
+
+## Prepare the data
+
+Gene genomic coordinates
+
+```{r}
+ensembl <- useEnsembl(biomart="ensembl", dataset='mmusculus_gene_ensembl')
+
+gene_order_file <- getBM(attributes = c("external_gene_name", "chromosome_name", "start_position", "end_position"), 
+              filters = "external_gene_name", 
+              values = rownames(Hem.data@assays$RNA@counts), # signaling receptor binding
+              mart = ensembl) %>% distinct(external_gene_name, .keep_all = T) %>% arrange(chromosome_name,start_position)
+
+gene_order_file$chromosome_name <- paste0("Chr", gene_order_file$chromosome_name)
+write.table(gene_order_file, "./gene_order_file.txt", sep = "\t", col.names = F, row.names = F, quote = F)
+```
+
+Counts matrix
+
+```{r}
+raw_counts_matrix <- GetAssayData(Hem.data, assay = "RNA" , slot="counts")
+```
+
+cell annotation file
+
+```{r}
+annotations_file <- cbind(Hem.data$Barcodes, Hem.data$Cell_ident)
+write.table(annotations_file, "./lineage.txt", sep = "\t", col.names = F, row.names = F, quote = F)
+```
+
+
+infercnv object
+
+```{r}
+infercnv_obj <- CreateInfercnvObject(raw_counts_matrix,
+                                      annotations_file = "lineage.txt",
+                                      delim="\t",
+                                      gene_order_file= "gene_order_file.txt",
+                                      ref_group_names= NULL)
+```
+
+## Run inferCNV
+
+```{r}
+infercnv_obj <- infercnv::run(infercnv_obj,
+                             cutoff=0.1,
+                             out_dir="output_dir", 
+                             cluster_by_groups=TRUE, 
+                             denoise=TRUE,
+                             HMM=TRUE)
+```
+
+```{r}
+Hem.data = infercnv::add_to_seurat(infercnv_output_path="./output_dir/",
+                                     seurat_obj=Hem.data,
+                                     top_n=10)
+```
+
+```{r}
+FeaturePlot(object = Hem.data,
+                    features = c("proportion_cnv_Chr10", "proportion_loss_Chr10", "proportion_dupli_Chr10",
+                                 "proportion_scaled_cnv_Chr10", "proportion_scaled_loss_Chr10","proportion_scaled_dupli_Chr10"),
+                    #cols = c("grey90", brewer.pal(9,"YlGnBu")),
+                    reduction = "spring",
+                    order = T) & NoLegend() & NoAxes()
+```
+
+```{r}
+DimPlot(Hem.data,
+        reduction = "spring",
+        group.by= grep("has_cnv", colnames(Hem.data@meta.data), value = T),
+        pt.size=0.5 ) & NoLegend() & NoAxes()
+
+```
+
