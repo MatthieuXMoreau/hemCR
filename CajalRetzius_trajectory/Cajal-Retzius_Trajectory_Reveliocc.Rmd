@@ -903,6 +903,27 @@ Plot.clust.trends(Neuro.trajectories,
                    Smooth.method = "gam")
 ```
 
+```{r}
+Pal.gostres <- gost(query = as.character(Pal.Gene.dynamique$Gene),
+                organism = "mmusculus", ordered_query = F, 
+                multi_query = F, significant = T, exclude_iea = T, 
+                measure_underrepresentation = F, evcodes = T, 
+                user_threshold = 0.05, correction_method = "fdr", 
+                domain_scope = "annotated", custom_bg = NULL, 
+                numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+
+write.table(apply(Pal.gostres$result, 2, as.character),
+            "Pal.gostrescsv", sep = ";", quote = F, row.names = F)
+```
+
+
+```{r}
+DNA_damage_GOterm <- Pal.gostres$result[Pal.gostres$result$term_id %in% c("GO:0008630", "GO:0030330", "GO:0031571", "GO:0006974", "GO:0006977",
+                                                                                 "GO:0044773", "GO:0042771", "GO:0042770", "GO:2001021", "GO:1902229"),]
+
+DNA_damage_GOterm[,c(1,2,3,5,6,7,11)]
+```
+
 # Session Info
 
 ```{r}
