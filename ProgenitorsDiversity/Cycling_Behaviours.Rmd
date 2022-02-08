@@ -18,10 +18,6 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
-
-# To use biomart 
-new_config <- httr::config(ssl_verifypeer = FALSE)
-httr::set_config(new_config, override = FALSE)
 ```
 
 # Load libraries
@@ -71,6 +67,101 @@ Progenitors.data <- NormalizeData(Progenitors.data, normalization.method = "LogN
 ```
 ```{r}
 Progenitors.data <- FindVariableFeatures(Progenitors.data, selection.method = "vst", nfeatures = 2000, assay = "RNA")
+```
+# Extra G2.M and M.G1 cells before cytokinesis
+
+```{r}
+table(Progenitors.data$Revelio.phase)
+```
+```{r}
+G2.M.cells <- subset(Progenitors.data, subset = Revelio.cc > 0.75)
+```
+
+```{r}
+DimPlot(object = G2.M.cells ,
+        group.by = "Revelio.phase",
+        pt.size = 1,
+        reduction = "spring",
+        cols =  c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) & NoAxes()
+```
+```{r}
+p1 <- ggplot(Progenitors.data@meta.data, aes(x= Revelio.cc, y= nUMI/10000)) +
+        geom_point(aes(color= Revelio.phase), size=0.5) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+        geom_smooth(method="loess", n= 50, fill="grey") +
+        ylim(0,NA)
+
+p2 <- ggplot(G2.M.cells@meta.data, aes(x= Revelio.cc, y= nUMI/10000)) +
+        geom_point(aes(color= Revelio.phase), size=0.5) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+        geom_smooth(method="loess", n= 50, fill="grey") +
+        ylim(0,NA)
+
+p1 + p2
+```
+## Normalization
+
+```{r}
+G2.M.cells <- NormalizeData(G2.M.cells, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+
+G2.M.cells <- FindVariableFeatures(G2.M.cells, selection.method = "vst", nfeatures = 2000, assay = "RNA")
+```
+## Dimensionality reduction
+
+```{r}
+G2.M.cells <- FindVariableFeatures(G2.M.cells, selection.method = "vst", nfeatures = 500)
+```
+
+
+```{r}
+G2.M.cells <- ScaleData(G2.M.cells)
+```
+```{r}
+G2.M.cells <- RunPCA(G2.M.cells, features = VariableFeatures(object = G2.M.cells))
+```
+
+
+```{r}
+p1 <- DimPlot(G2.M.cells,
+              pt.size = 1,
+              reduction = "pca")& NoAxes()
+
+p2 <- FeaturePlot(object = G2.M.cells,
+                  features = "BP_signature1",
+                  pt.size = 1,
+                  cols = rev(brewer.pal(10,"Spectral")),
+                  reduction = "pca",
+                  order = T)
+
+p3 <- FeaturePlot(object = G2.M.cells,
+                  features = "AP_signature1",
+                  pt.size = 1,
+                  cols = rev(brewer.pal(10,"Spectral")),
+                  reduction = "pca",
+                  order = T)
+
+p1 / p2 + p3
+```
+
+```{r}
+DimHeatmap(G2.M.cells, dims = 1:2, cells = 500, balanced = TRUE)
+```
+
+## Ap and BP score along cell cycle 
+
+```{r}
+p1 <- ggplot(Progenitors.data@meta.data, aes(x= Revelio.cc, y= AP_signature1)) +
+      geom_point(aes(color= Revelio.phase), size=0.5) +
+      scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+      geom_smooth(method="loess", n= 50, fill="grey")
+
+p2 <- ggplot(Progenitors.data@meta.data, aes(x= Revelio.cc, y= BP_signature1)) +
+      geom_point(aes(color= Revelio.phase), size=0.5) +
+      scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+      geom_smooth(method="loess", n= 50, fill="grey")
+
+
+p1 / p2
 ```
 
 
