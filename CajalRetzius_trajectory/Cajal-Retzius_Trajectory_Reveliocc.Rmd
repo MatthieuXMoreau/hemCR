@@ -136,7 +136,7 @@ DimPlot(object = Neurons.data,
 
 ```{r}
 Trajectories.Hem <- Neurons.data@meta.data %>%
-                    select("Barcodes", "nUMI", "Spring_1", "Spring_2", "Lineage") %>%
+                    select("Barcodes", "nUMI", "Spring_1", "Spring_2", "AP_signature1","BP_signature1", "EN_signature1", "LN_signature1", "Lineage") %>%
                     filter(Lineage == "Hem")
 ```
 
@@ -165,7 +165,7 @@ if (cor(Trajectories.Hem$PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', 
 
 ```{r}
 Trajectories.Pallial <- Neurons.data@meta.data %>%
-                        select("Barcodes", "nUMI", "Spring_1", "Spring_2", "Lineage") %>%
+                        select("Barcodes", "nUMI", "Spring_1", "Spring_2", "AP_signature1","BP_signature1", "EN_signature1", "LN_signature1", "Lineage") %>%
                         filter(Lineage == "Pallial")
                   
 ```
@@ -387,7 +387,7 @@ p1 + p2 + p3  + patchwork::plot_layout(ncol = 2)
 
 ```{r}
 # Start with neurons data
-Trajectories.all <- Trajectories.neurons %>% select(Barcodes, nUMI, Spring_1, Spring_2, Lineage)
+Trajectories.all <- Trajectories.neurons %>% select(Barcodes, nUMI, Spring_1, Spring_2, AP_signature1, BP_signature1, EN_signature1, LN_signature1, Lineage)
 
 Trajectories.all$Pseudotime <- Trajectories.neurons$PseudotimeScore.shifted + 1
 Trajectories.all$Phase <- NA
@@ -396,7 +396,7 @@ Trajectories.all$Phase <- NA
 ```{r}
 # Add progenitors data
 Trajectories.progenitors <- Progenitors.data@meta.data %>%
-                              select(Barcodes, nUMI, Spring_1, Spring_2) %>% 
+                              select(Barcodes, nUMI, Spring_1, Spring_2, AP_signature1, BP_signature1, EN_signature1, LN_signature1) %>% 
                               mutate(Lineage= ifelse(Progenitors.data$Cell_ident == "Medial_pallium", "Pallial", "Hem") ,
                                      Pseudotime= Progenitors.data$Revelio.cc,
                                      Phase = Progenitors.data$Revelio.phase)
@@ -435,6 +435,32 @@ p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
 
 p1 + p2
 ```
+```{r}
+p1 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= AP_signature1)) +
+  geom_point(aes(color= Lineage), size=0.5) +
+  scale_color_manual(values= c("#cc391b", "#026c9a")) +
+  geom_smooth(method="loess", n= 50, fill="grey")
+
+
+p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= BP_signature1)) +
+  geom_point(aes(color= Lineage), size=0.5) +
+  scale_color_manual(values= c("#cc391b", "#026c9a")) +
+  geom_smooth(method="loess", n= 50, fill="grey")
+
+p3 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= EN_signature1)) +
+  geom_point(aes(color= Lineage), size=0.5) +
+  scale_color_manual(values= c("#cc391b", "#026c9a")) +
+  geom_smooth(method="loess", n= 50, fill="grey")
+
+p4 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= LN_signature1)) +
+  geom_point(aes(color= Lineage), size=0.5) +
+  scale_color_manual(values= c("#cc391b", "#026c9a")) +
+  geom_smooth(method="loess", n= 50, fill="grey")
+
+
+p1 / p2 / p3 / p4
+```
+
 
 ```{r}
 rm(list = ls()[!ls() %in% c("Trajectories.all")])
