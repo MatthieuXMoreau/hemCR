@@ -1,0 +1,246 @@
+---
+title: "Velocyto analysis"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
+```
+
+# Run velocyto
+
+```{bash eval=FALSE, include=TRUE}
+
+samtools nthreads=6 sort -t CB -O BAM -o cellsorted_possorted_genome_bam.bam possorted_genome_bam.bam
+
+velocyto run10x ../../RawData/Hem1 ../../RawData/genes.gtf --samtools-threads 6 --samtools-memory 1000 -vv
+```
+
+```{bash eval=FALSE, include=TRUE}
+
+samtools nthreads=6 sort -t CB -O BAM -o cellsorted_possorted_genome_bam.bam possorted_genome_bam.bam
+
+velocyto run10x ../../RawData/Hem2 ../../RawData/genes.gtf --samtools-threads 6 --samtools-memory 1000 -vv
+```
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(velocyto.R)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# Load the full dataset
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+Idents(Hem.data) <- Hem.data$Cell_ident
+```
+
+```{r}
+Hem.data <- subset(Hem.data, subset = orig.ident == "Hem1")
+```
+
+```{r}
+DimPlot(object = Hem.data,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#83c3b8", #"ChP"
+                 "#009fda", #"ChP_progenitors"
+                 "#68b041", #"Dorso-Medial_pallium"
+                 "#e46b6b", #"Hem"
+                 "#e3c148", #"Medial_pallium"
+                 "#b7d174", #2
+                 "grey40", #4
+                 "black", #5
+                 "#3e69ac" #"Thalamic_eminence"
+                 ))
+```
+
+# Velocity estimation
+
+## Set Cluster Id and color palette for velocity internal plotting functions
+
+```{r}
+# Take the cluster id from Seurat analysis
+cluster.label <- Hem.data$Cell_ident
+Cluster.ident <- as.character(Hem.data$Cell_ident)
+
+# Set color Palette for layout
+colorsident <- cbind(ident = sort(unique(Cluster.ident)),
+                     colors = c("#83c3b8", #"ChP"
+                               "#009fda", #"ChP_progenitors"
+                               "#68b041", #"Dorso-Medial_pallium"
+                               "#e46b6b", #"Hem"
+                               "#e3c148", #"Medial_pallium"
+                               "#b7d174", #2
+                               "grey40", #4
+                               "black", #5
+                               "#3e69ac" #"Thalamic_eminence"
+                     ))
+
+# Create annotation data.frame
+Cells.Color.df <- data.frame(sample_name = row.names(Hem.data@meta.data),
+                             primary_type_label = as.character(Cluster.ident),
+                             primary_type_color = as.character(colorsident[match(Cluster.ident, colorsident[,1]),2]))
+
+
+cell.colors <- Cells.Color.df$primary_type_color
+names(cell.colors) <- Cells.Color.df$sample_name
+
+rm(Cells.Color.df,colorsident,palette)
+```
+
+## Load the velocito Loom file containing spliced / unspliced gene count matrix
+
+```{r}
+# Load Loom file containing spliced VS unspliced transcripts count matrices
+LoomPath <- "../../RawData/Hem1/velocyto/Hem1.loom" 
+ldat <- read.loom.matrices(LoomPath)
+```
+
+```{r}
+BarcodesVelocity <- paste0("Hem1_",stringi::stri_sub(ldat$spliced@Dimnames[[2]],6,21))
+
+ldat$spliced@Dimnames[[2]] <- BarcodesVelocity
+ldat$unspliced@Dimnames[[2]] <- BarcodesVelocity
+
+# Filter matrix
+ldat$spliced <- ldat$spliced[,rownames(Hem.data@meta.data)]
+ldat$unspliced <- ldat$unspliced[,rownames(Hem.data@meta.data)]
+
+spliced <- ldat$spliced[!duplicated(ldat[["unspliced"]]@Dimnames[[1]]),]
+unspliced <- ldat$unspliced[!duplicated(ldat[["unspliced"]]@Dimnames[[1]]),]
+```
+
+```{r}
+# Filter genes by cluster expression
+Hem.data <- FindVariableFeatures(Hem.data, selection.method = "vst", nfeatures = 2000)
+
+Filtered.spliced <- spliced[VariableFeatures(Hem.data)[VariableFeatures(Hem.data) %in% rownames(spliced)],]
+Filtered.unspliced <- unspliced[VariableFeatures(Hem.data)[VariableFeatures(Hem.data) %in% rownames(unspliced)],]
+
+cell.dist <- as.dist(1-armaCor(t(Hem.data@reductions$pca@cell.embeddings[,1:10])))
+
+emb <- Hem.data@reductions$spring@cell.embeddings/200
+```
+
+
+```{r}
+rm(list = ls()[!ls() %in% c("Filtered.spliced", "Filtered.unspliced", "cell.dist", "emb", "cell.colors")])
+gc()
+```
+
+
+## Velocity estimation and visualisation
+
+```{r}
+# Velocity estimation
+rvel.cd <- gene.relative.velocity.estimates(Filtered.spliced,
+                                            Filtered.unspliced,
+                                            deltaT=1,
+                                            kCells = 50,
+                                            cell.dist= cell.dist,
+                                            fit.quantile= 0.04,
+                                            n.cores = parallel::detectCores() -2)
+```
+
+```{r}
+# Velocity on embedding
+Spring.velo <- show.velocity.on.embedding.cor(emb,
+                                              rvel.cd,
+                                              n=100,
+                                              scale='sqrt',
+                                              arrow.scale=1,
+                                              show.grid.flow=T,
+                                              min.grid.cell.mass=0.5,
+                                              grid.n=40,
+                                              arrow.lwd=1,
+                                              do.par=F,
+                                              cell.border.alpha = 0,
+                                              cell.colors=cell.colors,
+                                              expression.scaling = T,
+                                              return.details= T,
+                                              n.core= parallel::detectCores() -2)
+```
+
+# Final plots
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.cells.RDS")
+Idents(Hem.data) <- Hem.data$Cell_ident
+```
+
+```{r}
+Hem.data <- subset(Hem.data, subset = orig.ident == "Hem1")
+```
+
+```{r}
+Spring.plot <- as.data.frame(Hem.data@reductions$spring@cell.embeddings/200) %>%
+               mutate(x0 = Spring.velo$arrows[, "x0"],
+                      x1 = Spring.velo$arrows[, "x1"],
+                      y0 = Spring.velo$arrows[, "y0"],
+                      y1 = Spring.velo$arrows[, "y1"]) %>%
+               mutate(x2 = x0 + (x1 - x0),
+                      y2 = y0 + (y1 - y0)) %>%
+               mutate(Cluster = Hem.data$Cell_ident)
+
+colors <- c("#83c3b8", #"ChP"
+            "#009fda", #"ChP_progenitors"
+            "#68b041", #"Dorso-Medial_pallium"
+            "#e46b6b", #"Hem"
+            "#e3c148", #"Medial_pallium"
+            "#b7d174", #2
+            "grey40", #4
+            "black", #5
+            "#3e69ac" #"Thalamic_eminence"
+            )
+
+ggplot(Spring.plot) +
+    geom_point(aes(x = Spring_1, y = Spring_2, colour = Cluster)) +
+    scale_color_manual(values = colors) +
+    geom_segment(aes(x = x0, xend = x2, y = y0, yend = y2),
+                 arrow = arrow(length = unit(3, "points"), type = "closed"),
+                 colour = "grey20", alpha = 0.4) + 
+   theme(legend.position="none")
+```
+
+```{r}
+global.vel.arrow <- Spring.velo$garrows %>%
+                    as.data.frame() %>%
+                     mutate(x2 = x0 + (x1 - x0),
+                            y2 = y0 + (y1 - y0))
+
+ggplot(Spring.plot) +
+    geom_point(aes(x = Spring_1, y = Spring_2, colour = Cluster)) +
+    scale_color_manual(values = colors) +
+    geom_segment(data = global.vel.arrow,
+                 aes(x = x0, xend = x2, y = y0, yend = y2),
+                 size = 1,
+                 arrow = arrow(length = unit(3, "points"), type = "open"),
+                 colour = "grey20", alpha = 0.8) + 
+   theme(legend.position="none")
+```
+
