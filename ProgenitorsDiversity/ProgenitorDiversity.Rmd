@@ -205,11 +205,11 @@ DimPlot(Progenitors.data,
 
 # Transfer identity to the full dataset
 
-```{r Load full dataset}
+```{r}
 Hem.data <- readRDS("../QC.filtered.cells.RDS")
 ```
 
-```{r transfer identitis}
+```{r }
 Hem.data$Cell_ident <- sapply(Hem.data$Barcodes,
                               FUN = function(x) {
                                 if (x %in% Progenitors.data$Barcodes) {
@@ -235,6 +235,102 @@ DimPlot(object = Hem.data,
                  "#3e69ac" #"Thalamic_eminence"
                  ))
 ```
+
+# Differentiating neurons lineages
+
+```{r}
+Neurons.data <-  subset(Hem.data, idents = 2)
+
+DimPlot(Neurons.data ,
+        reduction = "spring",
+        pt.size = 1,
+        cols =  c("#b7d174")) + NoAxes()
+```
+
+## Split Pallial from Cajal-Retzius cells
+
+```{r}
+p1 <- FeaturePlot(object = Neurons.data ,
+            features = c("BP_signature1","LN_signature1"),
+            pt.size = 0.5,
+            cols = rev(brewer.pal(10,"Spectral")),
+            reduction = "spring",
+            order = T) & NoAxes()
+
+p2 <- FeaturePlot(object = Neurons.data ,
+            features = c("Foxg1", "Trp73"),
+            pt.size = 0.5,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "spring",
+            order = T) & NoAxes()
+
+p1 / p2
+```
+
+Separation between the 2 lineage seems straightforward. We use louvain clustering to split the two.
+
+```{r}
+Neurons.data <- RunPCA(Neurons.data, verbose = FALSE)
+
+Neurons.data <- FindNeighbors(Neurons.data,
+                              dims = 1:10,
+                              k.param = 8)
+
+Neurons.data <- FindClusters(Neurons.data, resolution = 0.05)
+```
+
+```{r}
+DimPlot(Neurons.data,
+        reduction = "spring",
+        cols = c("#cc391b","#026c9a"),
+        pt.size = 0.5) & NoAxes()
+```
+
+```{r}
+Neurons.data$Lineage <- sapply(as.numeric(Neurons.data$SCT_snn_res.0.05),
+                               FUN = function(x) {x= c("Cajal-Retzius_neurons","Pallial_neurons")[x]})
+```
+
+```{r}
+DimPlot(object = Neurons.data,
+        group.by = "Lineage",
+        reduction = "spring",
+        cols = c("#cc391b","#026c9a"),
+        pt.size = 0.5) & NoAxes()
+```
+
+## Transfer identity to the full dataset
+
+```{r}
+Hem.data$Cell_ident <- sapply(Hem.data$Barcodes,
+                              FUN = function(x) {
+                                if (x %in% Neurons.data$Barcodes) {
+                                  x = Neurons.data@meta.data[x, "Lineage"]
+                                } else {
+                                  x = Hem.data@meta.data[x, "Cell_ident"]
+                                  }
+                              })
+```
+
+```{r}
+DimPlot(object = Hem.data,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#ebcb2e", #"ChP"
+                 "#9ec22f", #"ChP_progenitors"
+                 "#e7823a", # CR
+                 "#cc3a1b", #"Dorso-Medial_pallium" 
+                 "#d14c8d", #"Hem" 
+                 "#4cabdc", #"Medial_pallium"
+                 "#046c9a", # Pallial
+                 "#a9961b", #4
+                 "#5ab793", #5
+                 "#4990c9" #"Thalamic_eminence"
+                 )
+        )
+
+```
+
 
 # Save data
 
