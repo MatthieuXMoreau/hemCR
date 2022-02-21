@@ -55,89 +55,45 @@ Idents(Hem.data) <- Hem.data$Cell_ident
 DimPlot(object = Hem.data,
         group.by = "Cell_ident",
         reduction = "spring",
-        cols = c("#83c3b8", #"ChP"
-                 "#009fda", #"ChP_progenitors"
-                 "#68b041", #"Dorso-Medial_pallium"
-                 "#e46b6b", #"Hem"
-                 "#e3c148", #"Medial_pallium"
-                 "#b7d174", #2
-                 "grey40", #4
-                 "black", #5
-                 "#3e69ac" #"Thalamic_eminence"
-                 ))
+        cols = c("#ebcb2e", #"ChP"
+                 "#9ec22f", #"ChP_progenitors"
+                 "#e7823a", # CR
+                 "#cc3a1b", #"Dorso-Medial_pallium" 
+                 "#d14c8d", #"Hem" 
+                 "#4cabdc", #"Medial_pallium"
+                 "#046c9a", # Pallial
+                 "#a9961b", #4
+                 "#5ab793", #5
+                 "#4990c9" #"Thalamic_eminence"
+                 )
+        )
 ```
 
 # Differentiating neurons trajectory
 
 ```{r}
-Neurons.data <-  subset(Hem.data, idents = c("seurat_clusters_2"))
+Neurons.data <-  subset(Hem.data, idents = c("Cajal-Retzius_neurons", "Pallial_neurons"))
 
 DimPlot(Neurons.data ,
         reduction = "spring",
-        pt.size = 1,
-        cols =  c("#b7d174")) + NoAxes()
-```
-
-## Split Pallial from Cajal-Retzius cells
-
-```{r}
-p1 <- FeaturePlot(object = Neurons.data ,
-            features = c("BP_signature1","LN_signature1"),
-            pt.size = 0.5,
-            cols = rev(brewer.pal(10,"Spectral")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-p2 <- FeaturePlot(object = Neurons.data ,
-            features = c("Foxg1", "Trp73"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-p1 / p2
-```
-
-Separation between the 2 lineage seems straightforward. We use louvain clustering to split the two.
-
-```{r}
-Neurons.data <- RunPCA(Neurons.data, verbose = FALSE)
-
-Neurons.data <- FindNeighbors(Neurons.data,
-                              dims = 1:10,
-                              k.param = 8)
-
-Neurons.data <- FindClusters(Neurons.data, resolution = 0.05)
-```
-
-```{r}
-DimPlot(Neurons.data,
-        reduction = "spring",
-        cols = c("#cc391b","#026c9a"),
-        pt.size = 0.5) & NoAxes()
-```
-
-```{r}
-Neurons.data$Lineage <- sapply(as.numeric(Neurons.data$SCT_snn_res.0.05),
-                               FUN = function(x) {x= c("Hem","Pallial")[x]})
-```
-
-```{r}
-DimPlot(object = Neurons.data,
-        group.by = "Lineage",
-        reduction = "spring",
-        cols = c("#cc391b","#026c9a"),
-        pt.size = 0.5) & NoAxes()
+        pt.size = 1#,
+        #cols =  c("#b7d174")
+        ) + NoAxes()
 ```
 
 ## Fit principale curve on the two lineages
+
+```{r}
+Neurons.data$Lineage <- Neurons.data$Cell_ident
+```
+
 
 ### Cajal-Retzius cells
 
 ```{r}
 Trajectories.Hem <- Neurons.data@meta.data %>%
                     select("Barcodes", "nUMI", "Spring_1", "Spring_2", "AP_signature1","BP_signature1", "EN_signature1", "LN_signature1", "Lineage") %>%
-                    filter(Lineage == "Hem")
+                    filter(Lineage == "Cajal-Retzius_neurons")
 ```
 
 ```{r}
@@ -166,7 +122,7 @@ if (cor(Trajectories.Hem$PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', 
 ```{r}
 Trajectories.Pallial <- Neurons.data@meta.data %>%
                         select("Barcodes", "nUMI", "Spring_1", "Spring_2", "AP_signature1","BP_signature1", "EN_signature1", "LN_signature1", "Lineage") %>%
-                        filter(Lineage == "Pallial")
+                        filter(Lineage == "Pallial_neurons")
                   
 ```
 
@@ -397,7 +353,7 @@ Trajectories.all$Phase <- NA
 # Add progenitors data
 Trajectories.progenitors <- Progenitors.data@meta.data %>%
                               select(Barcodes, nUMI, Spring_1, Spring_2, AP_signature1, BP_signature1, EN_signature1, LN_signature1) %>% 
-                              mutate(Lineage= ifelse(Progenitors.data$Cell_ident == "Medial_pallium", "Pallial", "Hem") ,
+                              mutate(Lineage= ifelse(Progenitors.data$Cell_ident == "Medial_pallium", "Pallial_neurons", "Cajal-Retzius_neurons") ,
                                      Pseudotime= Progenitors.data$Revelio.cc,
                                      Phase = Progenitors.data$Revelio.phase)
 ```
@@ -580,6 +536,120 @@ gbm_cds <- newCellDataSet(Neuro.trajectories[["RNA"]]@counts[var.genes,],
 gbm_cds <- estimateSizeFactors(gbm_cds)
 gbm_cds <- estimateDispersions(gbm_cds)
 gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
+```
+
+```{r}
+rm(list = ls()[!ls() %in% c("Neuro.trajectories", "gbm_cds", "Gene.Trend", "Plot.Genes.trend")])
+gc()
+```
+## Find Pan-neuronal genes
+
+```{r}
+# Split pallial and subpallial cells for gene expression fitting
+#Pallial cells
+Pallialcells <- Neuro.trajectories@meta.data %>%
+                filter(Lineage == "Pallial_neurons") %>%
+                pull(Barcodes)
+
+# Cajal-Retzius cells
+CRcells <- Neuro.trajectories@meta.data %>%
+                   filter(Lineage == "Cajal-Retzius_neurons") %>%
+                   pull(Barcodes)
+```
+
+```{r}
+# We filter-out genes detected in less than 200 or 200 cells along Pallial or CR lineages
+num.cells <- Matrix::rowSums(Neuro.trajectories@assays$RNA@counts[,Pallialcells] > 0)
+Pallial.expressed <- names(x = num.cells[which(x = num.cells >= 200)])
+
+num.cells <- Matrix::rowSums(Neuro.trajectories@assays$RNA@counts[,CRcells] > 0)
+CR.expressed <- names(x = num.cells[which(x = num.cells >= 200)])
+
+Input.genes <- rownames(gbm_cds)[rownames(gbm_cds) %in% intersect(Pallial.expressed, CR.expressed)]
+```
+
+
+```{r differentialGeneTest, message=FALSE, warning=FALSE, cache=TRUE}
+Pallial.genes <- differentialGeneTest(gbm_cds[Input.genes, Pallialcells], 
+                                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
+                                                 reducedModelFormulaStr = "~1", 
+                                                 cores = parallel::detectCores() - 2)
+
+#Filter based on FDR
+Pallial.genes.filtered <- Pallial.genes  %>% filter(qval < 1e-3)
+```
+
+```{r differentialGeneTest, message=FALSE, warning=FALSE, cache=TRUE}
+CRcells.genes <- differentialGeneTest(gbm_cds[Input.genes, CRcells], 
+                                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
+                                                 reducedModelFormulaStr = "~1", 
+                                                 cores = parallel::detectCores() - 2)
+
+#Filter based on FDR
+CRcells.genes.filtered <- CRcells.genes  %>% filter(qval < 1e-3)
+```
+
+```{r}
+Common.genes <- intersect(Pallial.genes.filtered$gene_short_name, CRcells.genes.filtered$gene_short_name)
+```
+
+```{r}
+# Smooth genes expression along the two trajectories
+nPoints <- 200
+
+new_data = list()
+for (Lineage in unique(pData(gbm_cds)$Lineage)){
+  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(pData(gbm_cds)$Pseudotime), max(pData(gbm_cds)$Pseudotime), length.out = nPoints), Lineage=Lineage)
+}
+
+new_data = do.call(rbind, new_data)
+
+# Smooth gene expression
+curve_matrix <- genSmoothCurves(gbm_cds[as.character(Common.genes),],
+                                trend_formula = "~sm.ns(Pseudotime, df = 3)*Lineage",
+                                relative_expr = TRUE,
+                                new_data = new_data,
+                                cores= parallel::detectCores() - 2)
+```
+
+```{r}
+# Extract genes with person's cor > 0.6 between the 2 trajectories
+
+Pallial.smoothed <- scale(t(curve_matrix[,c(1:200)]))  #Pallial points
+CR.smoothed <- scale(t(curve_matrix[,c(201:400)])) #CR points
+
+mat <- cor(Pallial.smoothed, CR.smoothed, method = "pearson")
+
+Gene.Cor <- diag(mat)
+hist(Gene.Cor, breaks = 100)
+abline(v=0.8,col=c("blue"))
+```
+```{r}
+PanNeuro.genes <- names(Gene.Cor[Gene.Cor > 0.8])
+```
+
+```{r}
+# Order rows using seriation
+dst <- as.dist((1-cor(scale(t(curve_matrix[PanNeuro.genes,c(400:201)])), method = "pearson")))
+row.ser <- seriate(dst, method ="MDS_angle") #MDS_angle
+gene.order <- PanNeuro.genes[get_order(row.ser)]
+
+anno.colors <- list(lineage = c(Pallial="#026c9a",CR="#cc391b"))
+
+
+pheatmap::pheatmap(curve_matrix[rev(gene.order),
+                                c(1:200, 201:400)], #CR
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_col = data.frame(lineage = rep(c("Pallial","CR"), each=200)),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = T,
+                   fontsize_row = 2,
+                   color =  viridis::viridis(10),
+                   breaks = seq(-2.5,2.5, length.out = 10),
+                   main = "")
 ```
 
 ```{r}
