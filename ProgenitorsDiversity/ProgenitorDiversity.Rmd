@@ -314,15 +314,15 @@ Idents(Hem.data) <- factor(x = Idents(Hem.data),
 DimPlot(object = Hem.data,
         group.by = "Cell_ident",
         reduction = "spring",
-        cols = c("#ebcb2e", # CR 
-                 "#9ec22f", #"ChP" 
-                 "#e7823a", #"ChP_progenitors"
-                 "#cc3a1b", #"Dorso-Medial_pallium" 
-                 "#d14c8d", #"Hem" 
-                 "#4cabdc", #"Medial_pallium"
-                 "#046c9a", # Pallial
-                 "#4990c9" #"Thalamic_eminence"
-                 )
+        cols = c("#ebcb2e", #"CR"
+            "#e7823a", #"ChP"
+            "#4cabdc", # Chp_prog
+            "#68b041", #"Dorso-Medial_pallium" 
+            "#e46b6b", #"Hem" 
+            "#e3c148", #"Medial_pallium"
+            "#046c9a", # Pallial
+            "#4990c9"#"Thalamic_eminence"
+                     )
         ) + NoAxes()
 ```
 

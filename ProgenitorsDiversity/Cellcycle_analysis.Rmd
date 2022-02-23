@@ -54,17 +54,15 @@ Hem.data <- readRDS("../QC.filtered.clustered.cells.RDS")
 DimPlot(object = Hem.data,
         group.by = "Cell_ident",
         reduction = "spring",
-        cols = c("#ebcb2e", #"ChP"
-                 "#9ec22f", #"ChP_progenitors"
-                 "#e7823a", # CR
-                 "#cc3a1b", #"Dorso-Medial_pallium" 
-                 "#d14c8d", #"Hem" 
-                 "#4cabdc", #"Medial_pallium"
-                 "#046c9a", # Pallial
-                 "#a9961b", #4
-                 "#5ab793", #5
-                 "#4990c9" #"Thalamic_eminence"
-                 )
+        cols = c("#ebcb2e", #"CR"
+            "#e7823a", #"ChP"
+            "#4cabdc", # Chp_prog
+            "#68b041", #"Dorso-Medial_pallium" 
+            "#e46b6b", #"Hem" 
+            "#e3c148", #"Medial_pallium"
+            "#046c9a", # Pallial
+            "#4990c9"#"Thalamic_eminence"
+                     )
         )
 ```
 We first test the tool on the hem progenitor subset
