@@ -1,5 +1,5 @@
 ---
-title: "Analysis of progenitors' diverity"
+title: "Progenitor domains and neuronal lineage characterisation"
 author:
    - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -154,37 +154,8 @@ DimPlot(Progenitors.data,
         split.by = 'ident') + NoLegend() & NoAxes()
 ```
 
-# Progenitors domains specific gene expression
 
-```{r Find markers}
-domain.markers <- FindAllMarkers(Progenitors.data,
-                                 only.pos = F,
-                                 min.pct = 0.25,
-                                 logfc.threshold = 0.3)
-
-domain.markers.filtered <- domain.markers %>%
-                            group_by(cluster) %>%
-                            top_n(n = 4, wt = avg_log2FC) %>% 
-                            unique()
-```
-
-```{r fig.dim=c(9,6)}
-DotPlot(Progenitors.data,
-        features = unique(domain.markers.filtered$gene)
-        ) + RotatedAxis()
-```
-
-## Selected genes for tissue mapping
-
-```{r fig.dim=c(9,6)}
-DotPlot(Progenitors.data,
-        features = c("Shisa2", "Wif1", "Rassf4", "Sulf1", "Dkk3", "Dlk1","Ttr")
-        ) + RotatedAxis()
-```
-
-![](Figures/Illustration_Hem.jpg "Progenitor domain marker ISH at E12.5")
-
-# Rename clusters
+## Rename clusters
 
 ```{r}
 ident = c("Dorso-Medial_pallium", "ChP", "Medial_pallium", "Hem", "ChP_progenitors", "Thalamic_eminence")
@@ -203,7 +174,7 @@ DimPlot(Progenitors.data,
         split.by = 'ident') + NoLegend() & NoAxes()
 ```
 
-# Transfer identity to the full dataset
+## Transfer identity to the full dataset
 
 ```{r}
 Hem.data <- readRDS("../QC.filtered.cells.RDS")
