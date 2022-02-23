@@ -47,7 +47,7 @@ theme_set(theme_classic())
 # Load the full dataset
 
 ```{r}
-Hem.data <- readRDS("../QC.filtered.cells.RDS")
+Hem.data <- readRDS("../QC.filtered.clustered.cells.RDS")
 Idents(Hem.data) <- Hem.data$Cell_ident
 ```
 
