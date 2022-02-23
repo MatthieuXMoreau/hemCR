@@ -64,7 +64,6 @@ Hem.data <- subset(Hem.data, subset = orig.ident == "Hem1")
 ```
 
 ```{r}
-
 DimPlot(object = Hem.data,
         group.by = "Cell_ident",
         reduction = "spring",
@@ -75,8 +74,6 @@ DimPlot(object = Hem.data,
                  "#d14c8d", #"Hem" 
                  "#4cabdc", #"Medial_pallium"
                  "#046c9a", # Pallial
-                 "#a9961b", #4
-                 "#5ab793", #5
                  "#4990c9" #"Thalamic_eminence"
                  )
         )
@@ -94,15 +91,13 @@ Cluster.ident <- as.character(Hem.data$Cell_ident)
 # Set color Palette for layout
 colorsident <- cbind(ident = sort(unique(Cluster.ident)),
                      colors = c("#ebcb2e", #"ChP"
-                                 "#9ec22f", #"ChP_progenitors"
-                                 "#e7823a", # CR
-                                 "#cc3a1b", #"Dorso-Medial_pallium" 
-                                 "#d14c8d", #"Hem" 
-                                 "#4cabdc", #"Medial_pallium"
-                                 "#046c9a", # Pallial
-                                 "#a9961b", #4
-                                 "#5ab793", #5
-                                 "#4990c9" #"Thalamic_eminence"
+                               "#9ec22f", #"ChP_progenitors"
+                               "#e7823a", # CR
+                               "#cc3a1b", #"Dorso-Medial_pallium" 
+                               "#d14c8d", #"Hem" 
+                               "#4cabdc", #"Medial_pallium"
+                               "#046c9a", # Pallial
+                               "#4990c9" #"Thalamic_eminence"
                      ))
 
 # Create annotation data.frame
@@ -165,7 +160,7 @@ gc()
 rvel.cd <- gene.relative.velocity.estimates(Filtered.spliced,
                                             Filtered.unspliced,
                                             deltaT=1,
-                                            kCells = 50,
+                                            kCells = 20,
                                             cell.dist= cell.dist,
                                             fit.quantile= 0.04,
                                             n.cores = parallel::detectCores() -2)
@@ -180,7 +175,7 @@ Spring.velo <- show.velocity.on.embedding.cor(emb,
                                               arrow.scale=1,
                                               show.grid.flow=T,
                                               min.grid.cell.mass=0.5,
-                                              grid.n=40,
+                                              grid.n=20,
                                               arrow.lwd=1,
                                               do.par=F,
                                               cell.border.alpha = 0,
@@ -193,7 +188,7 @@ Spring.velo <- show.velocity.on.embedding.cor(emb,
 # Final plots
 
 ```{r}
-Hem.data <- readRDS("../QC.filtered.cells.RDS")
+Hem.data <- readRDS("../QC.filtered.clustered.cells.RDS")
 Idents(Hem.data) <- Hem.data$Cell_ident
 ```
 
@@ -211,15 +206,14 @@ Spring.plot <- as.data.frame(Hem.data@reductions$spring@cell.embeddings/200) %>%
                       y2 = y0 + (y1 - y0)) %>%
                mutate(Cluster = Hem.data$Cell_ident)
 
-colors <- c("#83c3b8", #"ChP"
-            "#009fda", #"ChP_progenitors"
-            "#68b041", #"Dorso-Medial_pallium"
-            "#e46b6b", #"Hem"
-            "#e3c148", #"Medial_pallium"
-            "#b7d174", #2
-            "grey40", #4
-            "black", #5
-            "#3e69ac" #"Thalamic_eminence"
+colors <- c("#ebcb2e", #"ChP"
+             "#9ec22f", #"ChP_progenitors"
+             "#e7823a", # CR
+             "#cc3a1b", #"Dorso-Medial_pallium" 
+             "#d14c8d", #"Hem" 
+             "#4cabdc", #"Medial_pallium"
+             "#046c9a", # Pallial
+             "#4990c9" #"Thalamic_eminence"
             )
 
 ggplot(Spring.plot) +
