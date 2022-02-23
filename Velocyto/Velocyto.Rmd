@@ -67,15 +67,15 @@ Hem.data <- subset(Hem.data, subset = orig.ident == "Hem1")
 DimPlot(object = Hem.data,
         group.by = "Cell_ident",
         reduction = "spring",
-        cols = c("#ebcb2e", #"ChP"
-                 "#9ec22f", #"ChP_progenitors"
-                 "#e7823a", # CR
-                 "#cc3a1b", #"Dorso-Medial_pallium" 
-                 "#d14c8d", #"Hem" 
-                 "#4cabdc", #"Medial_pallium"
-                 "#046c9a", # Pallial
-                 "#4990c9" #"Thalamic_eminence"
-                 )
+        cols = c("#ebcb2e", #"CR"
+            "#e7823a", #"ChP"
+            "#4cabdc", # Chp_prog
+            "#68b041", #"Dorso-Medial_pallium" 
+            "#e46b6b", #"Hem" 
+            "#e3c148", #"Medial_pallium"
+            "#046c9a", # Pallial
+            "#4990c9"#"Thalamic_eminence"
+                     )
         )
 ```
 
@@ -90,14 +90,14 @@ Cluster.ident <- as.character(Hem.data$Cell_ident)
 
 # Set color Palette for layout
 colorsident <- cbind(ident = sort(unique(Cluster.ident)),
-                     colors = c("#ebcb2e", #"ChP"
-                               "#9ec22f", #"ChP_progenitors"
-                               "#e7823a", # CR
-                               "#cc3a1b", #"Dorso-Medial_pallium" 
-                               "#d14c8d", #"Hem" 
-                               "#4cabdc", #"Medial_pallium"
-                               "#046c9a", # Pallial
-                               "#4990c9" #"Thalamic_eminence"
+                     colors =c("#ebcb2e", #"CR"
+                                "#e7823a", #"ChP"
+                                "#4cabdc", # Chp_prog
+                                "#68b041", #"Dorso-Medial_pallium" 
+                                "#e46b6b", #"Hem" 
+                                "#e3c148", #"Medial_pallium"
+                                "#046c9a", # Pallial
+                                "#4990c9"#"Thalamic_eminence"
                      ))
 
 # Create annotation data.frame
@@ -149,96 +149,16 @@ emb <- Hem.data@reductions$spring@cell.embeddings/200
 
 ```{r}
 rm(list = ls()[!ls() %in% c("Filtered.spliced", "Filtered.unspliced", "cell.dist", "emb", "cell.colors")])
-gc()
+
+save.image("./Hem1_velocyto_input.RData")
 ```
 
-
-## Velocity estimation and visualisation
+# Session Info
 
 ```{r}
-# Velocity estimation
-rvel.cd <- gene.relative.velocity.estimates(Filtered.spliced,
-                                            Filtered.unspliced,
-                                            deltaT=1,
-                                            kCells = 20,
-                                            cell.dist= cell.dist,
-                                            fit.quantile= 0.04,
-                                            n.cores = parallel::detectCores() -2)
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
 ```
-
-```{r}
-# Velocity on embedding
-Spring.velo <- show.velocity.on.embedding.cor(emb,
-                                              rvel.cd,
-                                              n=100,
-                                              scale='sqrt',
-                                              arrow.scale=1,
-                                              show.grid.flow=T,
-                                              min.grid.cell.mass=0.5,
-                                              grid.n=20,
-                                              arrow.lwd=1,
-                                              do.par=F,
-                                              cell.border.alpha = 0,
-                                              cell.colors=cell.colors,
-                                              expression.scaling = T,
-                                              return.details= T,
-                                              n.core= parallel::detectCores() -2)
-```
-
-# Final plots
-
-```{r}
-Hem.data <- readRDS("../QC.filtered.clustered.cells.RDS")
-Idents(Hem.data) <- Hem.data$Cell_ident
-```
-
-```{r}
-Hem.data <- subset(Hem.data, subset = orig.ident == "Hem1")
-```
-
-```{r}
-Spring.plot <- as.data.frame(Hem.data@reductions$spring@cell.embeddings/200) %>%
-               mutate(x0 = Spring.velo$arrows[, "x0"],
-                      x1 = Spring.velo$arrows[, "x1"],
-                      y0 = Spring.velo$arrows[, "y0"],
-                      y1 = Spring.velo$arrows[, "y1"]) %>%
-               mutate(x2 = x0 + (x1 - x0),
-                      y2 = y0 + (y1 - y0)) %>%
-               mutate(Cluster = Hem.data$Cell_ident)
-
-colors <- c("#ebcb2e", #"ChP"
-             "#9ec22f", #"ChP_progenitors"
-             "#e7823a", # CR
-             "#cc3a1b", #"Dorso-Medial_pallium" 
-             "#d14c8d", #"Hem" 
-             "#4cabdc", #"Medial_pallium"
-             "#046c9a", # Pallial
-             "#4990c9" #"Thalamic_eminence"
-            )
-
-ggplot(Spring.plot) +
-    geom_point(aes(x = Spring_1, y = Spring_2, colour = Cluster)) +
-    scale_color_manual(values = colors) +
-    geom_segment(aes(x = x0, xend = x2, y = y0, yend = y2),
-                 arrow = arrow(length = unit(3, "points"), type = "closed"),
-                 colour = "grey20", alpha = 0.4) + 
-   theme(legend.position="none")
-```
-
-```{r}
-global.vel.arrow <- Spring.velo$garrows %>%
-                    as.data.frame() %>%
-                     mutate(x2 = x0 + (x1 - x0),
-                            y2 = y0 + (y1 - y0))
-
-ggplot(Spring.plot) +
-    geom_point(aes(x = Spring_1, y = Spring_2, colour = Cluster)) +
-    scale_color_manual(values = colors) +
-    geom_segment(data = global.vel.arrow,
-                 aes(x = x0, xend = x2, y = y0, yend = y2),
-                 size = 1,
-                 arrow = arrow(length = unit(3, "points"), type = "open"),
-                 colour = "grey20", alpha = 0.8) + 
-   theme(legend.position="none")
-```
-
