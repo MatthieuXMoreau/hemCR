@@ -270,9 +270,9 @@ DimPlot(object = Neurons.data,
         pt.size = 0.5) & NoAxes()
 ```
 
-## Transfer identity to the full dataset
+## Transfer identities to the full dataset
 
-```{r}
+```{r Transfer identities}
 Hem.data$Cell_ident <- sapply(Hem.data$Barcodes,
                               FUN = function(x) {
                                 if (x %in% Neurons.data$Barcodes) {
@@ -283,30 +283,114 @@ Hem.data$Cell_ident <- sapply(Hem.data$Barcodes,
                               })
 ```
 
+# Plot representative marker genes
+
+We excluded Meninges and Immune cell clusters
+
+```{r}
+Idents(Hem.data) <- Hem.data$Cell_ident
+
+Hem.data <-  subset(Hem.data, idents = unique(Hem.data$Cell_ident)[!unique(Hem.data$Cell_ident) %in% c("seurat_clusters_4", "seurat_clusters_5")])
+```
+
+```{r}
+Hem.data <- BuildClusterTree(Hem.data,
+                             assay = "SCT",
+                             slot = "data",
+                             reorder = T,
+                             verbose = TRUE)
+
+data.tree <- Tool(object = Hem.data, slot = "BuildClusterTree")
+tree.rotated <- ape::rotate(data.tree, node =c(12))
+
+Idents(Hem.data) <- factor(x = Idents(Hem.data),
+                           levels = c("ChP","Cajal-Retzius_neurons","Pallial_neurons",
+                                      "Dorso-Medial_pallium","Medial_pallium","Hem",
+                                      "Thalamic_eminence","ChP_progenitors"),
+                           ordered = TRUE)
+```
+
 ```{r}
 DimPlot(object = Hem.data,
         group.by = "Cell_ident",
         reduction = "spring",
-        cols = c("#ebcb2e", #"ChP"
-                 "#9ec22f", #"ChP_progenitors"
-                 "#e7823a", # CR
+        cols = c("#ebcb2e", # CR 
+                 "#9ec22f", #"ChP" 
+                 "#e7823a", #"ChP_progenitors"
                  "#cc3a1b", #"Dorso-Medial_pallium" 
                  "#d14c8d", #"Hem" 
                  "#4cabdc", #"Medial_pallium"
                  "#046c9a", # Pallial
-                 "#a9961b", #4
-                 "#5ab793", #5
                  "#4990c9" #"Thalamic_eminence"
                  )
-        )
-
+        ) + NoAxes()
 ```
 
+```{r}
+p1 <- ggdendro::ggdendrogram(ggdendro::dendro_data(as.hclust(tree.rotated)), labels = F, rotate = T) + scale_y_reverse()
+```
+
+
+```{r}
+Marker.genes <- c("Htr2c", "Cfap126",
+                  "Trp73", "Lhx1", "Foxg1","Cbln4", "Tbr1", "Neurod2",
+                  "Lmo2", "Sox9", "Lhx2", "Meis2", "Shisa2",
+                  "Wif1", "Wnt5a", "Id3",
+                  "Rassf4", "Dkk3","Rspo3",
+                  "Dlk1", "Meg3",
+                  "Mlf1","Sulf1", "Ttr")
+
+data.to.plot <- data.frame(t(as.matrix(Hem.data@assays$SCT[Marker.genes,])))
+  
+data.to.plot$Cell <- rownames(data.to.plot)
+data.to.plot$id <- Idents(Hem.data)
+  
+#Reshape the dataframe
+data.to.plot <- data.to.plot %>% tidyr::gather(key = Marker.genes, value = expression, -c(Cell, id)) 
+  
+#For each genes in each cluster calculate mean expression and percent cell with norm expression > 0
+data.to.plot <- data.to.plot %>%
+		  group_by(id, Marker.genes) %>% 
+    		  summarize(avg.exp = mean(expm1(x = expression)), pct.exp = length(x = expression[expression > 0.7]) / length(x = expression)) 
+  
+data.to.plot <- data.to.plot %>% ungroup() %>%
+    group_by(Marker.genes) %>% 
+    mutate(avg.exp.scale = scale(x = avg.exp)) %>%
+    mutate(avg.exp.scale = MinMax(data = avg.exp.scale, max = 2, min = -2)) # add column with scaled expression values from -2 to 2
+  
+data.to.plot$genes.plot <- factor(x = data.to.plot$Marker.genes, levels = rev(x = Marker.genes)) #Put gene names as factor 
+  
+data.to.plot$pct.exp[data.to.plot$pct.exp < 0.05] <- NA #Set to Na if less than percent.min of cells express the gene
+data.to.plot$pct.exp <- data.to.plot$pct.exp * 100
+  
+p2 <- ggplot(data = data.to.plot, mapping = aes(x = genes.plot, y = id)) +
+	    geom_point(mapping = aes(size = pct.exp, color = avg.exp.scale)) + # modify the colors by if want to color by domains or cluster ident
+	    scale_size_area(max_size= 4) + # Scale the radius of the dot from 0 to 6 
+	    scale_x_discrete(position = "top") +
+	    theme(axis.text.x = element_text(angle = 90, vjust = 1), axis.title.y = element_blank()) +
+	    xlab("") + ylab("") +
+	    scale_colour_gradientn(colours = brewer.pal(11,"RdPu"))
+```
+
+```{r}
+plot_grid(plotlist = list(p1,p2), ncol=2, align='h', rel_widths = c(0.2, 1.5))
+```
+
+```{r}
+FeaturePlot(object = Hem.data,
+            features = c("Tbr1", "Trp73", "Htr2c",
+                         "Shisa2", "Wif1", "Rassf4","Dkk3",
+                         "Dlk1", "Sulf1", "Ttr"),
+            pt.size = 0.2,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "spring",
+            order = T) & NoAxes() & NoLegend()
+```
 
 # Save data
 
 ```{r}
-saveRDS(Hem.data, "../QC.filtered.cells.RDS")
+saveRDS(Hem.data, "../QC.filtered.clustered.cells.RDS")
 ```
 
 # Session Info
