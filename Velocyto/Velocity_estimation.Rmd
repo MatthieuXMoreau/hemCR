@@ -45,18 +45,18 @@ load("Hem1_velocyto_input.RData")
 
 # Velocity estimation and visualisation
 
-```{r}
+```{r cache=TRUE}
 # Velocity estimation
 rvel.cd <- gene.relative.velocity.estimates(Filtered.spliced,
                                             Filtered.unspliced,
                                             deltaT=1,
-                                            kCells = 10,
+                                            kCells = 20,
                                             cell.dist= cell.dist,
                                             fit.quantile= 0.04,
                                             n.cores = parallel::detectCores() -2)
 ```
 
-```{r}
+```{r cache=TRUE}
 # Velocity on embedding
 Spring.velo <- show.velocity.on.embedding.cor(emb,
                                               rvel.cd,
@@ -122,7 +122,7 @@ ggplot(Spring.plot) +
     scale_color_manual(values = colors) +
     geom_segment(data = global.vel.arrow,
                  aes(x = x0, xend = x2, y = y0, yend = y2),
-                 size = 1,
+                 size = 0.5,
                  arrow = arrow(length = unit(3, "points"), type = "open"),
                  colour = "grey20", alpha = 0.8) + 
    theme(legend.position="none")
