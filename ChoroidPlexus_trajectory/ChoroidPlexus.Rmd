@@ -33,6 +33,7 @@ library(Seurat)
 library(Revelio)
 library(princurve)
 library(monocle)
+library(gprofiler2)
 library(orthologsBioMART)
 library(Matrix)
 library(dplyr)
@@ -108,7 +109,7 @@ FeaturePlot(object = ChP.data ,
 ```{r}
 hist(ChP.data$Septum1, breaks = 20)
 
-ChP.data$Septal.prog <- ChP.data$Septum1 > 0.1
+ChP.data$Septal.prog <- ChP.data$Septum1 > 0
 ```
 
 ```{r}
@@ -252,13 +253,7 @@ gc()
 ```
 
 
-## Compare results between different ordering approched applied to the DC space
-
-### Comparison of Revelio cell cycle ordering and *Angle* method
-
-To obtain the best linear ordering of cell along G1 to M phase we compare the output `ccPercentageUniformlySpaced' form Revelio and the one obtained with the [*Angle*](https://github.com/dynverse/ti_angle) method describe in [Saelens et. al. Nature Biotechnology 2019](https://www.nature.com/articles/s41587-019-0071-9)
-
-New dataframe 
+## Graphical exploration of the infered cell cycle axis
 
 ```{r}
 CellCycledata <- cbind(as.data.frame(t(myData@transformedData$dc$data[1:2,])),
@@ -268,11 +263,6 @@ CellCycledata <- cbind(as.data.frame(t(myData@transformedData$dc$data[1:2,])),
                        Seurat.cc= Prog.data@meta.data[myData@cellInfo$cellID,"CC.Difference"])
 ```
 
-Compute cycling trajectory with Angle 
-
-```{r}
-CellCycledata$Angle.cc <- atan2(CellCycledata$DC1, CellCycledata$DC2) / 2 / pi + .5
-```
 
 ### Cells distribution in the DC1-DC2 space
 
@@ -288,22 +278,12 @@ p1 <- ggplot(CellCycledata, aes(DC1, DC2)) +
         scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
 
 p2 <- ggplot(CellCycledata, aes(DC1, DC2)) +
-        geom_point(aes(color=Seurat.cc), size=2, shape=16) + 
-        scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
-                              name='Seurat_cc')
-
-p3 <- ggplot(CellCycledata, aes(DC1, DC2)) +
-        geom_point(aes(color=Angle.cc), size=2, shape=16) + 
-        scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
-                              name='Angle.cc')
-
-p4 <- ggplot(CellCycledata, aes(DC1, DC2)) +
         geom_point(aes(color=Revelio.cc), size=2, shape=16) + 
         scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
                               name='Revelio_cc')
 
 
-(p1+p2)/(p3+p4)
+p1 + p2
 ```
 
 
@@ -322,8 +302,6 @@ Prog.data$Revelio.DC1 <- CellCycledata$DC1
 Prog.data$Revelio.DC2 <- CellCycledata$DC2
 
 Prog.data$Revelio.phase <- CellCycledata$Revelio.phase
-
-Prog.data$Angle.cc <- CellCycledata$Angle.cc
 Prog.data$Revelio.cc <- CellCycledata$Revelio.cc
 ```
 
@@ -385,23 +363,6 @@ p4 <- Trajectories.progenitors %>% arrange(Htr2c) %>%
 p1 + p2 + p3 + p4  + patchwork::plot_layout(ncol = 2)
 ```
 
-
-```{r fig.dim=c(9,3)}
-p1 <- ggplot(Trajectories.progenitors, aes(x= Cycling.axis, y= Gmnc)) +
-        geom_point(aes(color= Phase), size=0.5) +
-        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
-        geom_smooth(method="loess", n= 50) +
-        ylim(0,NA)
-
-p2 <- ggplot(Trajectories.progenitors, aes(x= Cycling.axis, y= Top2a)) +
-        geom_point(aes(color= Phase), size=0.5) +
-        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
-        geom_smooth(method="loess", n= 50) +
-        ylim(0,NA)
-
-p1 + p2
-```
-
 ```{r}
 rm(list = ls()[!ls() %in% c("Trajectories.progenitors", "ChP.data")])
 gc()
@@ -431,9 +392,6 @@ FeaturePlot(object = ChP.data,
 
 
 # Use monocle2 to model gene expression along differentition axis
-
-
-
 
 ## Initialize a monocle object
 
@@ -474,7 +432,7 @@ gc()
 
 ## Test each gene trend over pseudotime score
 
-```{r}
+```{r cache=TRUE}
 pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed >= 30,], 
                                                  fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
                                                  reducedModelFormulaStr = "~1", 
@@ -488,7 +446,7 @@ pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 5e-5
 
 ## Smooth expression of significative genes
 
-```{r}
+```{r cache=TRUE}
 # Create a new vector of 200 points
 nPoints <- 200
 new_data <- data.frame(Pseudotime = seq(min(pData(gbm_cds)$Pseudotime), max(pData(gbm_cds)$Pseudotime), length.out = nPoints))
@@ -527,16 +485,12 @@ pal <- wes_palette("Darjeeling1")
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
                     Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
-col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), each=100))
-
 pheatmap::pheatmap(Smooth.curve.matrix[gene.order,],
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
                    annotation_row = ChP.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   #annotation_col = col.anno,
                    annotation_colors = anno.colors,
-                   #gaps_col = 100,
                    show_colnames = F,
                    show_rownames = F,
                    fontsize_row = 8,
@@ -545,14 +499,39 @@ pheatmap::pheatmap(Smooth.curve.matrix[gene.order,],
                    main = "")
 ```
 
-```{r}
-source("../Functions/functions_GeneClusterTrend.R")
+# GO term enrichment in gene clusters using gprofiler2
 
-Plot.clust.trends(ChP.data,
-                   Lineage = "ChP",
-                   Which.cluster = 1:5,
-                   clust.list = Pseudotime.genes.clusters$clustering,
-                   Smooth.method = "gam")
+```{r}
+ChP.gostres <- gost(query = list("Clust.1" = ChP.Gene.dynamique %>% filter(Gene.Clusters == "Clust.1") %>% pull(Gene) %>% as.character(),
+                             "Clust.2" = ChP.Gene.dynamique %>% filter(Gene.Clusters == "Clust.2") %>% pull(Gene) %>% as.character(),
+                             "Clust.3" = ChP.Gene.dynamique %>% filter(Gene.Clusters == "Clust.3") %>% pull(Gene) %>% as.character(),
+                             "Clust.4" = ChP.Gene.dynamique %>% filter(Gene.Clusters == "Clust.4") %>% pull(Gene) %>% as.character(),
+                             "Clust.5" = ChP.Gene.dynamique %>% filter(Gene.Clusters == "Clust.5") %>% pull(Gene) %>% as.character()),
+                organism = "mmusculus", ordered_query = F, 
+                multi_query = F, significant = T, exclude_iea = T, 
+                measure_underrepresentation = F, evcodes = T, 
+                user_threshold = 0.05, correction_method = "fdr", 
+                domain_scope = "annotated", custom_bg = NULL, 
+                numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+```
+
+```{r}
+ChP.gostres <- gost(query = as.character(ChP.Gene.dynamique$Gene),
+                organism = "mmusculus", ordered_query = F, 
+                multi_query = F, significant = T, exclude_iea = T, 
+                measure_underrepresentation = F, evcodes = T, 
+                user_threshold = 0.05, correction_method = "fdr", 
+                domain_scope = "annotated", custom_bg = NULL, 
+                numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+```
+
+# Save results
+
+```{r}
+write.table(ChP.Gene.dynamique, "ChP.Gene.dynamique.csv", sep = ";")
+
+write.table(apply(ChP.gostres$result,2,as.character),
+            "ChP.gostres.csv", sep = ";", quote = F, row.names = F)
 ```
 
 
