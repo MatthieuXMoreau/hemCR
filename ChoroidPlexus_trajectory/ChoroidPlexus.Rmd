@@ -476,8 +476,8 @@ gc()
 
 ```{r}
 pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed >= 30,], 
-                                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)*Cell.cycle", 
-                                                 reducedModelFormulaStr = "~Cell.cycle", 
+                                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
+                                                 reducedModelFormulaStr = "~1", 
                                                  cores = parallel::detectCores() - 2)
 ```
 
@@ -536,7 +536,7 @@ pheatmap::pheatmap(Smooth.curve.matrix[gene.order,],
                    annotation_row = ChP.Gene.dynamique %>% dplyr::select(Gene.Clusters),
                    #annotation_col = col.anno,
                    annotation_colors = anno.colors,
-                   gaps_col = 100,
+                   #gaps_col = 100,
                    show_colnames = F,
                    show_rownames = F,
                    fontsize_row = 8,
