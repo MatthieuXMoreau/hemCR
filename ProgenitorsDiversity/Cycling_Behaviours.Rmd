@@ -25,7 +25,6 @@ knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=
 ```{r message=FALSE, warning=FALSE}
 library(Seurat)
 library(monocle)
-library(Oscope)
 library(Matrix)
 library(dplyr)
 library(RColorBrewer)
@@ -105,21 +104,22 @@ gbm_cds <- estimateSizeFactors(gbm_cds)
 gbm_cds <- estimateDispersions(gbm_cds)
 gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
 ```
+
 ## Test each gene trend over pseudotime score
 
 ### Find genes DE along pseudomaturation axis
 
 ```{r cache= TRUE, message=FALSE, warning=FALSE}
 Cellcycle.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed > 200,], 
-                                                 fullModelFormulaStr = "~sm.ns(Revelio.cc, df = 3)*domain", 
-                                                 reducedModelFormulaStr = "~domain", 
+                                                 fullModelFormulaStr = "~sm.ns(Revelio.cc, df = 3)", 
+                                                 reducedModelFormulaStr = "~1", 
                                                  cores = parallel::detectCores() - 2)
 
 ```
 
 ```{r}
 # Filter genes based on FDR
-Cellcycle.diff.filtered <- Cellcycle.diff %>% filter(qval < 5e-10)
+Cellcycle.diff.filtered <- Cellcycle.diff %>% filter(qval < 5e-20)
 ```
 
 ## Smooth expression of significative genes
@@ -179,8 +179,101 @@ pheatmap::pheatmap(Smooth.curve.matrix[gene.order,],
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
 ```
+# Plot gene trends along cycling axis
+
+```{r}
+Cell.cycle.trend <- function(Seurat.data,
+                             group.by,
+                             gene){
+  
+  data <- Seurat.data@meta.data %>% select("Revelio.cc", "Revelio.phase", "Cell_ident")
+  data$Gene <- Progenitors.data@assays$RNA@data[gene,]
+  
+  if (!group.by == "Cell_ident") {
+    p <- ggplot(data=data, aes(x= Revelio.cc, y= Gene)) +
+        geom_point(aes(color= Revelio.phase), size=0.5) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
+        geom_smooth(method="loess", n= 50, fill="grey") +
+        ylim(0,NA) +
+        ggtitle(gene)
+  } else {
+    p <- ggplot(data=data, aes(x= Revelio.cc, y= Gene)) +
+        geom_point(aes(color= Cell_ident), size=0.5) +
+        scale_color_manual(values= c("#68b041", "#e3c148", "#e46b6b")) +
+        geom_smooth(method="loess", n= 50, aes(color= Cell_ident)) +
+        ylim(0,NA) +
+        ggtitle(gene)
+  }
+  
+  
+  return(p)
+}
 
 
+Plot.Genes.trend <- function(Seurat.data,
+                             group.by,
+                             genes){
+  pList <- mapply(FUN = Cell.cycle.trend, gene = genes,
+                  MoreArgs = list(Seurat.data = Seurat.data, group.by=group.by),
+                  SIMPLIFY = FALSE)
+  print(x = cowplot::plot_grid(plotlist = pList, ncol = 2))
+} 
+```
+
+```{r}
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Revelio.phase",
+                 genes= c("Gadd45g", "Hes6", "Sox4" #Module1
+                          ))
+
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Revelio.phase",
+                 genes= c("Casp8ap2", "Emx1","Mcm4" #Module5
+                          ))
+
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Revelio.phase",
+                 genes= c("Pold1","Ticrr", "Plk4"#Module4
+                          ))
+
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Revelio.phase",
+                 genes= c("Nes", "Sox2", "Bora"#Module3
+                          ))
+
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Revelio.phase",
+                 genes= c("Gas1", "Bcl11b", "Dynll1"#Module2
+                          ))
+```
+
+
+```{r}
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Cell_ident",
+                 genes= c("Gadd45g", "Hes6", "Sox4" #Module1
+                          ))
+
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Cell_ident",
+                 genes= c("Casp8ap2", "Emx1","Mcm4" #Module5
+                          ))
+
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Cell_ident",
+                 genes= c("Pold1","Ticrr", "Plk4"#Module4
+                          ))
+
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Cell_ident",
+                 genes= c("Nes", "Sox2", "Bora"#Module3
+                          ))
+
+Plot.Genes.trend(Seurat.data= Progenitors.data,
+                 group.by = "Cell_ident",
+                 genes= c("Gas1", "Bcl11b", "Dynll1"#Module2
+                          ))
+```
 
 # Session Info
 
