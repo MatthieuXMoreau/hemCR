@@ -1,5 +1,5 @@
 ---
-title: "Comparison between progenitor domain cycling behaviour"
+title: "Cell cycle variable genes in neuronal progenitors"
 author:
    - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -60,197 +60,26 @@ p2 <- DimPlot(object = Progenitors.data,
 
 p1 + p2
 ```
-# Normalization
-
-```{r}
-Progenitors.data <- NormalizeData(Progenitors.data, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
-```
-```{r}
-Progenitors.data <- FindVariableFeatures(Progenitors.data, selection.method = "vst", nfeatures = 2000, assay = "RNA")
-```
-# Extra G2.M and M.G1 cells before cytokinesis
-
-```{r}
-table(Progenitors.data$Revelio.phase)
-```
-```{r}
-G2.M.cells <- subset(Progenitors.data, subset = Revelio.cc > 0.75)
-```
-
-```{r}
-DimPlot(object = G2.M.cells ,
-        group.by = "Revelio.phase",
-        pt.size = 1,
-        reduction = "spring",
-        cols =  c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) & NoAxes()
-```
-```{r}
-p1 <- ggplot(Progenitors.data@meta.data, aes(x= Revelio.cc, y= nUMI/10000)) +
-        geom_point(aes(color= Revelio.phase), size=0.5) +
-        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
-        geom_smooth(method="loess", n= 50, fill="grey") +
-        ylim(0,NA)
-
-p2 <- ggplot(G2.M.cells@meta.data, aes(x= Revelio.cc, y= nUMI/10000)) +
-        geom_point(aes(color= Revelio.phase), size=0.5) +
-        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
-        geom_smooth(method="loess", n= 50, fill="grey") +
-        ylim(0,NA)
-
-p1 + p2
-```
-## Normalization
-
-```{r}
-G2.M.cells <- NormalizeData(G2.M.cells, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
-
-G2.M.cells <- FindVariableFeatures(G2.M.cells, selection.method = "vst", nfeatures = 2000, assay = "RNA")
-```
-## Dimensionality reduction
-
-```{r}
-G2.M.cells <- FindVariableFeatures(G2.M.cells, selection.method = "vst", nfeatures = 500)
-```
-
-
-```{r}
-G2.M.cells <- ScaleData(G2.M.cells)
-```
-```{r}
-G2.M.cells <- RunPCA(G2.M.cells, features = VariableFeatures(object = G2.M.cells))
-```
-
-
-```{r}
-p1 <- DimPlot(G2.M.cells,
-              pt.size = 1,
-              reduction = "pca")& NoAxes()
-
-p2 <- FeaturePlot(object = G2.M.cells,
-                  features = "BP_signature1",
-                  pt.size = 1,
-                  cols = rev(brewer.pal(10,"Spectral")),
-                  reduction = "pca",
-                  order = T)
-
-p3 <- FeaturePlot(object = G2.M.cells,
-                  features = "AP_signature1",
-                  pt.size = 1,
-                  cols = rev(brewer.pal(10,"Spectral")),
-                  reduction = "pca",
-                  order = T)
-
-p1 / p2 + p3
-```
-
-```{r}
-DimHeatmap(G2.M.cells, dims = 1:2, cells = 500, balanced = TRUE)
-```
-
-## Ap and BP score along cell cycle 
-
-```{r}
-p1 <- ggplot(Progenitors.data@meta.data, aes(x= Revelio.cc, y= AP_signature1)) +
-      geom_point(aes(color= Revelio.phase), size=0.5) +
-      scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
-      geom_smooth(method="loess", n= 50, fill="grey")
-
-p2 <- ggplot(Progenitors.data@meta.data, aes(x= Revelio.cc, y= BP_signature1)) +
-      geom_point(aes(color= Revelio.phase), size=0.5) +
-      scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
-      geom_smooth(method="loess", n= 50, fill="grey")
-
-
-p1 / p2
-```
-
-
-# Plot some genes trend along cycling axis
-
-```{r}
-Cell.cycle.trend <- function(Seurat.data,
-                             group.by,
-                             gene){
-  
-  data <- Seurat.data@meta.data %>% select("Revelio.cc", "Revelio.phase", "Cell_ident")
-  data$Gene <- Progenitors.data@assays$RNA@data[gene,]
-  
-  if (!group.by == "Cell_ident") {
-    p <- ggplot(data=data, aes(x= Revelio.cc, y= Gene)) +
-        geom_point(aes(color= Revelio.phase), size=0.5) +
-        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
-        geom_smooth(method="loess", n= 50, fill="grey") +
-        ylim(0,NA) +
-        ggtitle(gene)
-  } else {
-    p <- ggplot(data=data, aes(x= Revelio.cc, y= Gene)) +
-        geom_point(aes(color= Cell_ident), size=0.5) +
-        scale_color_manual(values= c("#68b041", "#e3c148", "#e46b6b")) +
-        geom_smooth(method="loess", n= 50, aes(color= Cell_ident)) +
-        ylim(0,NA) +
-        ggtitle(gene)
-  }
-  
-  
-  return(p)
-}
-
-
-Plot.Genes.trend <- function(Seurat.data,
-                             group.by,
-                             genes){
-  pList <- mapply(FUN = Cell.cycle.trend, gene = genes,
-                  MoreArgs = list(Seurat.data = Seurat.data, group.by=group.by),
-                  SIMPLIFY = FALSE)
-  print(x = cowplot::plot_grid(plotlist = pList, ncol = 2))
-} 
-```
-
-```{r fig.dim=c(9,12)}
-Plot.Genes.trend(Seurat.data= Progenitors.data,
-                 group.by = "Revelio.phase",
-                 genes= c("Ccna2", "Ccne1",
-                          "Ccnb2", "Ccnb1",
-                          "Cdk1", "Pcna",
-                          "Mcm6", "Hist1h2bc",
-                          "Top2a", "Tpx2",
-                          "Hes1", "Hes6",
-                          "Hes5","Neurog2"))
-
-```
-
-```{r fig.dim=c(9,10)}
-Plot.Genes.trend(Seurat.data= Progenitors.data,
-                 group.by = "Revelio.phase",
-                 genes= c("Neurog2", "Btg2",
-                          "Hes6", "Dll1",
-                          "Gadd45g","Magi1",
-                          "Elavl4", "Mfng",
-                          "Foxn3","Spsb1"))
-```
-```{r fig.dim=c(9,9)}
-Plot.Genes.trend(Seurat.data= Progenitors.data,
-                 group.by = "Cell_ident",
-                 genes= c("Foxn3","Spsb1",
-                          "Cdkn1c","H2afx",
-                          "Nkd1", "Wls",
-                          "Gmnc", "Ooep",
-                          "Bok", "Cdk6",
-                          "Skil", "Rassf4",
-                          "Cenpw","Folr1"))
-```
-
-# Use monocle2 to model gene expression along cycling axis
+# Find all cell cycle viariable genes common to all domains
 
 ## Initialize a monocle object
 
 ```{r}
-# Transfer metadata
-domain <- as.character(ifelse(Progenitors.data$Cell_ident == "Hem",
-                              "Hem", "Pallium"))
+rm(list = ls()[!ls() %in% c("Progenitors.data")])
+gc()
+```
 
+```{r}
+Progenitors.data <- NormalizeData(Progenitors.data, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+
+Progenitors.data <- FindVariableFeatures(Progenitors.data, selection.method = "vst", nfeatures = 2000, assay = "RNA")
+```
+
+
+```{r}
+# Transfer metadata
 meta.data <- data.frame(barcode= Progenitors.data$Barcodes,
-                        domain= domain,
+                        domain= Progenitors.data$Cell_ident,
                         Revelio.phase= Progenitors.data$Revelio.phase,
                         Revelio.cc= Progenitors.data$Revelio.cc)
 
@@ -276,18 +105,12 @@ gbm_cds <- estimateSizeFactors(gbm_cds)
 gbm_cds <- estimateDispersions(gbm_cds)
 gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
 ```
-
-```{r}
-rm(list = ls()[!ls() %in% c("Progenitors.data", "gbm_cds", "Gene.Trend", "Plot.Genes.trend")])
-gc()
-```
-
 ## Test each gene trend over pseudotime score
 
 ### Find genes DE along pseudomaturation axis
 
-```{r message=FALSE, warning=FALSE}
-pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed > 80,], 
+```{r cache= TRUE, message=FALSE, warning=FALSE}
+Cellcycle.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed > 200,], 
                                                  fullModelFormulaStr = "~sm.ns(Revelio.cc, df = 3)*domain", 
                                                  reducedModelFormulaStr = "~domain", 
                                                  cores = parallel::detectCores() - 2)
@@ -296,18 +119,18 @@ pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_
 
 ```{r}
 # Filter genes based on FDR
-pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 5e-10)
+Cellcycle.diff.filtered <- Cellcycle.diff %>% filter(qval < 5e-10)
 ```
 
 ## Smooth expression of significative genes
 
-```{r}
+```{r cache= TRUE}
 # Create a new vector of 200 points
 nPoints <- 200
 new_data <- data.frame(Revelio.cc = seq(min(pData(gbm_cds)$Revelio.cc), max(pData(gbm_cds)$Revelio.cc), length.out = nPoints))
 
 # Smooth gene expression
-Smooth.curve.matrix <- genSmoothCurves(gbm_cds[as.character(pseudo.maturation.diff.filtered$gene_short_name),],
+Smooth.curve.matrix <- genSmoothCurves(gbm_cds[as.character(Cellcycle.diff.filtered$gene_short_name),],
                                        trend_formula = "~sm.ns(Revelio.cc, df = 3)",
                                        relative_expr = TRUE,
                                        new_data = new_data,
@@ -323,7 +146,7 @@ Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Smooth.curv
 Ccycle.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
                                  Waves= Pseudotime.genes.clusters$clustering,
                                  Gene.Clusters = Pseudotime.genes.clusters$clustering,
-                                 q.val = pseudo.maturation.diff.filtered$qval
+                                 q.val = Cellcycle.diff.filtered$qval
                                  ) %>% arrange(Gene.Clusters)
 
 row.names(Ccycle.Gene.dynamique) <- Ccycle.Gene.dynamique$Gene
@@ -356,30 +179,7 @@ pheatmap::pheatmap(Smooth.curve.matrix[gene.order,],
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
 ```
-# Oscope analysis
 
-```{r}
-data <- as.matrix(Progenitors.data[["RNA"]]@counts[gene.order,])
-```
-
-libraries size normalization
- 
-```{r}
-Sizes <- MedianNorm(data)
-DataNorm <- GetNormalizedMat(data, Sizes)
-```
-
-Resacling
-
-```{r}
-DataInput <- NormForSine(DataNorm)
-```
-
-## Oscope: paired-sine model
-
-```{r}
-SineRes <- OscopeSine(DataInput)
-```
 
 
 # Session Info
