@@ -342,7 +342,7 @@ p1 <- DimPlot(Progenitors.data,
 p2 <- FeaturePlot(object = Progenitors.data,
             features = "Revelio.cc",
             pt.size = 0.5,
-            cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
+            cols = rev(brewer.pal(10,"Spectral")),
             reduction = "spring",
             order = T) & NoAxes()
 
