@@ -849,7 +849,7 @@ pheatmap::pheatmap(CR_curve_matrix[gene.order,],
 source("../Functions/functions_GeneClusterTrend.R")
 
 Plot.clust.trends(Neuro.trajectories,
-                   Lineage = "Hem",
+                   Lineage = "Cajal-Retzius_neurons",
                    Which.cluster = 1:5,
                    clust.list = Pseudotime.genes.clusters$clustering,
                    Smooth.method = "gam")
@@ -902,8 +902,53 @@ DNA_damage_GOterm <- CR.gostres$result[CR.gostres$result$term_id %in% c("GO:0008
 DNA_damage_GOterm[,c(1,2,3,5,6,7,11)]
 ```
 
+### Intersection with ChP dynamicaly expressed genes
 
-## Pallial neuron trajectory analysis
+```{r}
+ChP_dynamic_genes <- read.table("../ChoroidPlexus_trajectory/ChP.Gene.dynamique.csv", sep = ";", header = T, row.names = 1)
+```
+
+
+```{r}
+CR_ChP_common_genes <- CR.Gene.dynamique %>% filter(Gene %in% ChP_dynamic_genes$Gene)
+```
+
+```{r}
+gene.order2 <- gene.order[gene.order %in% CR_ChP_common_genes$Gene]
+
+pheatmap::pheatmap(CR_curve_matrix[gene.order2,],
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = col.anno,
+                   annotation_colors = anno.colors,
+                   gaps_col = 100,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+```
+```{r}
+CR_ChP_common.gostres<- gost(query = list("Clust.1" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.1") %>% pull(Gene) %>% as.character(),
+                             "Clust.2" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.2") %>% pull(Gene) %>% as.character(),
+                             "Clust.3" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.3") %>% pull(Gene) %>% as.character(),
+                             "Clust.4" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.4") %>% pull(Gene) %>% as.character(),
+                             "Clust.5" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.5") %>% pull(Gene) %>% as.character()),
+                organism = "mmusculus", ordered_query = F, 
+                multi_query = F, significant = T, exclude_iea = T, 
+                measure_underrepresentation = F, evcodes = T, 
+                user_threshold = 0.05, correction_method = "fdr", 
+                domain_scope = "annotated", custom_bg = NULL, 
+                numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+
+write.table(apply(CR_ChP_common.gostres$result,2,as.character),
+            "CR_ChP_common_GO_res-by-waves.csv", sep = ";", quote = F, row.names = F)
+```
+
+## Pallial neurons trajectory analysis
 
 ```{r}
 # Extract Pallial neurons trajectory genes
@@ -958,6 +1003,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
 ```
+
 We manually correct the reordering so genes are aligned from top right to bottom left
 
 ```{r fig.dim=c(9, 5)}
@@ -1005,6 +1051,7 @@ pheatmap::pheatmap(Pal_curve_matrix[gene.order,200:1],
                    main = "")
 
 ```
+
 ### Gene cluster trend
 
 ```{r fig.dim=c(9,6)}
