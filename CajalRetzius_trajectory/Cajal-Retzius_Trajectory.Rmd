@@ -585,7 +585,7 @@ Input.genes <- rownames(gbm_cds)[rownames(gbm_cds) %in% intersect(Pallial.expres
 ```
 
 
-```{r differentialGeneTest, message=FALSE, warning=FALSE, cache=TRUE}
+```{r  message=FALSE, warning=FALSE, cache=TRUE}
 Pallial.genes <- differentialGeneTest(gbm_cds[Input.genes, Pallialcells], 
                                                  fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
                                                  reducedModelFormulaStr = "~1", 
@@ -595,7 +595,7 @@ Pallial.genes <- differentialGeneTest(gbm_cds[Input.genes, Pallialcells],
 Pallial.genes.filtered <- Pallial.genes  %>% filter(qval < 1e-3)
 ```
 
-```{r differentialGeneTest, message=FALSE, warning=FALSE, cache=TRUE}
+```{r  message=FALSE, warning=FALSE, cache=TRUE}
 CRcells.genes <- differentialGeneTest(gbm_cds[Input.genes, CRcells], 
                                                  fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
                                                  reducedModelFormulaStr = "~1", 
@@ -677,7 +677,7 @@ gc()
 
 ### Find genes DE along pseudomaturation axis
 
-```{r differentialGeneTest, message=FALSE, warning=FALSE, cache=TRUE}
+```{r message=FALSE, warning=FALSE, cache=TRUE}
 pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed > 80,], 
                                                  fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)*Lineage", 
                                                  reducedModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
@@ -1056,7 +1056,7 @@ pheatmap::pheatmap(Pal_curve_matrix[gene.order,200:1],
 
 ```{r fig.dim=c(9,6)}
 Plot.clust.trends(Neuro.trajectories,
-                   Lineage = "Pallial",
+                   Lineage = "Pallial_neurons",
                    Which.cluster = 1:5,
                    clust.list = Pseudotime.genes.clusters$clustering,
                    Smooth.method = "gam")
