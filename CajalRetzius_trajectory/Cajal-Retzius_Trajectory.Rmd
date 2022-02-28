@@ -920,9 +920,9 @@ pheatmap::pheatmap(CR_curve_matrix[gene.order2,],
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
-                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   annotation_col = col.anno,
-                   annotation_colors = anno.colors,
+                   #annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   #annotation_col = col.anno,
+                   #annotation_colors = anno.colors,
                    gaps_col = 100,
                    show_colnames = F,
                    show_rownames = F,
@@ -932,7 +932,7 @@ pheatmap::pheatmap(CR_curve_matrix[gene.order2,],
                    main = "")
 ```
 ```{r}
-CR_ChP_common.gostres<- gost(query = list("Clust.1" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.1") %>% pull(Gene) %>% as.character(),
+CR_ChP_common.gostres <- gost(query = list("Clust.1" = CR_ChP_common_genes %>% filter(Gene.Clusters == "Clust.1") %>% pull(Gene) %>% as.character(),
                              "Clust.2" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.2") %>% pull(Gene) %>% as.character(),
                              "Clust.3" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.3") %>% pull(Gene) %>% as.character(),
                              "Clust.4" = CR.Gene.dynamique %>% filter(Gene.Clusters == "Clust.4") %>% pull(Gene) %>% as.character(),
@@ -947,6 +947,20 @@ CR_ChP_common.gostres<- gost(query = list("Clust.1" = CR.Gene.dynamique %>% filt
 write.table(apply(CR_ChP_common.gostres$result,2,as.character),
             "CR_ChP_common_GO_res-by-waves.csv", sep = ";", quote = F, row.names = F)
 ```
+
+```{r}
+CR_ChP_common.gostres <- gost(query = as.character(CR_ChP_common_genes$Gene),
+                organism = "mmusculus", ordered_query = F, 
+                multi_query = F, significant = T, exclude_iea = T, 
+                measure_underrepresentation = F, evcodes = T, 
+                user_threshold = 0.05, correction_method = "fdr", 
+                domain_scope = "annotated", custom_bg = NULL, 
+                numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+
+write.table(apply(CR_ChP_common.gostres$result,2,as.character),
+            "CR_ChP_common_GO_res_all.csv", sep = ";", quote = F, row.names = F)
+```
+
 
 ## Pallial neurons trajectory analysis
 
