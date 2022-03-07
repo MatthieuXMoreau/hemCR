@@ -3,7 +3,7 @@
 -   Manuscript draft figure 1 : Fig1.Rmd
 
     -   [X] To bring all descriptive clustering (AP, neuronal trajectories) analysis in one file **Fig1.Rmd**
-    -   [] To make a dot plot with seleced marker genes which best describe the dataset (Progenitors + neurons)
+    -   [X] To make a dot plot with seleced marker genes which best describe the dataset (Progenitors + neurons)
     -   [X] To retreive and plot the heatmap of pan-neuronal gene expression sequence
 
 # 09-12-21
