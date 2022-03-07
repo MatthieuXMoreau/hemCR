@@ -160,7 +160,7 @@ We filter cells which are likely to be doublet based on their higher content of 
 
 ```{r}
 # Set low and hight thresholds on the number of detected genes
-min.Genes.thr <- median(log10(Cell.QC.Stat$nFeature_RNA)) - 3*mad(log10(Cell.QC.Stat$nFeature_RNA))
+min.Genes.thr <- 3.2
 max.Genes.thr <- median(log10(Cell.QC.Stat$nFeature_RNA)) + 3*mad(log10(Cell.QC.Stat$nFeature_RNA))
 
 # Set hight threshold on the number of transcripts
@@ -270,6 +270,8 @@ table(Raw.data$Predicted_doublets)
 ```
 # Generate SRING dimentionality reduction
 
+## Export counts matrix
+
 ```{r}
 dir.create("./SpringCoordinates")
 ```
@@ -287,14 +289,50 @@ write.table(Genelist, "./SpringCoordinates/Genelist.csv", sep="\t", col.names = 
 
 ```{r}
 #Export metadata
-Low.detected.Genes <- c("Scrublet", as.character(Raw.data$nFeature_RNA < 10^3.2))
-Low.detected.Genes <- paste(Low.detected.Genes, sep=",", collapse=",")
-
 Scrublet <- c("Scrublet", Raw.data$Predicted_doublets)
 Scrublet <- paste(Scrublet, sep=",", collapse=",")
 
-Cellgrouping <- rbind(Low.detected.Genes, Scrublet)
+Cellgrouping <- Scrublet
 write.table(Cellgrouping, "./SpringCoordinates/Cellgrouping.csv", quote =F, row.names = F, col.names = F)
+```
+
+## Import coordinates
+
+```{r}
+spring.coor <- read.table("SpringCoordinates/coordinates.txt", sep = ",", header = F, row.names = 1)
+colnames(spring.coor) <- c("Spring_1", "Spring_2")
+```
+
+```{r}
+Spring.Sym <- function(x){
+  x = abs(max(spring.coor$Spring_2)-x)
+ }
+
+spring.coor$Spring_2 <- sapply(spring.coor$Spring_2, function(x) Spring.Sym(x))
+```
+
+```{r}
+Raw.data$Spring_1 <- spring.coor$Spring_1
+Raw.data$Spring_2 <- spring.coor$Spring_2
+```
+
+
+```{r}
+spring <- as.matrix(Raw.data@meta.data %>% select("Spring_1", "Spring_2"))
+  
+Raw.data[["spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_", assay = DefaultAssay(Raw.data))
+```
+
+```{r}
+DimPlot(Raw.data, 
+        reduction = "spring",
+        group.by = "Predicted_doublets",
+        pt.size = 0.5) & NoAxes()
+```
+# Save the object
+
+```{r Save RDS}
+saveRDS(Raw.data, "./GmncKO.cells.RDS")
 ```
 
 
