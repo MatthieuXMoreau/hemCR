@@ -159,12 +159,12 @@ Cell.QC.Stat <- Cell.QC.Stat %>% filter(percent.mito < max.mito.thr) %>% filter(
 We filter cells which are likely to be doublet based on their higher content of transcript detected as well as cell with to few genes/UMI sequenced
 
 ```{r}
-# Set low and hight thresholds on the number of detected genes
-min.Genes.thr <- 3.2
-max.Genes.thr <- median(log10(Cell.QC.Stat$nFeature_RNA)) + 3*mad(log10(Cell.QC.Stat$nFeature_RNA))
+# Set low and hight thresholds on the number of detected genes based on the one obtain with the WT dataset
+min.Genes.thr <- log10(1635)
+max.Genes.thr <- log10(8069)
 
 # Set hight threshold on the number of transcripts
-max.nUMI.thr <- median(log10(Cell.QC.Stat$nCount_RNA)) + 3*mad(log10(Cell.QC.Stat$nCount_RNA))
+max.nUMI.thr <- log10(58958)
 ```
 
 
@@ -261,13 +261,17 @@ Raw.data$Doubletscore <- py$doublet_scores
 # Plot doublet score
 ggplot(Raw.data@meta.data, aes(x = Doubletscore, stat(ndensity))) +
   geom_histogram(bins = 200, colour ="lightgrey")+
-  geom_vline(xintercept = 0.20, colour = "red", linetype = 2)
+  geom_vline(xintercept = 0.15, colour = "red", linetype = 2)
 ```
 ```{r}
 # Manually set threshold at doublet score to 0.2
-Raw.data$Predicted_doublets <- ifelse(py$doublet_scores > 0.2, "Doublet","Singlet")
+Raw.data$Predicted_doublets <- ifelse(py$doublet_scores > 0.15, "Doublet","Singlet")
 table(Raw.data$Predicted_doublets)
 ```
+```{r}
+Raw.data <- subset(x = Raw.data, subset = Predicted_doublets == "Singlet")
+```
+
 # Generate SRING dimentionality reduction
 
 ## Export counts matrix
@@ -326,9 +330,49 @@ Raw.data[["spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_
 ```{r}
 DimPlot(Raw.data, 
         reduction = "spring",
-        group.by = "Predicted_doublets",
         pt.size = 0.5) & NoAxes()
 ```
+# Sctransform normalization
+
+```{r}
+Raw.data <- SCTransform(Raw.data,
+                        method = "glmGamPoi",
+                        vars.to.regress = c("percent.mito"),
+                        verbose = T)
+```
+# Run PCA and broad clustering
+
+```{r}
+Raw.data <- RunPCA(Raw.data, verbose = FALSE)
+
+Raw.data <- FindNeighbors(Raw.data,
+                          dims = 1:20,
+                          k.param = 8)
+
+Raw.data <- FindClusters(Raw.data, resolution = 0.1)
+```
+
+```{r}
+DimPlot(Raw.data,
+        reduction = "spring",
+        cols = c(wes_palette("FantasticFox1"),"#9ec22f","grey60"),
+        pt.size = 0.5) & NoAxes()
+```
+
+# Plot marker genes found in the WT dataset
+
+```{r}
+FeaturePlot(object = Raw.data,
+            features = c("Tbr1","Foxg1", "Trp73", "Htr2c",
+                         "Shisa2", "Wif1", "Rassf4","Dkk3",
+                         "Dlk1", "Sulf1", "Ttr", "Foxc1", "C1qb"),
+            pt.size = 0.2,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "spring",
+            order = T) & NoAxes() & NoLegend()
+```
+
+
 # Save the object
 
 ```{r Save RDS}
