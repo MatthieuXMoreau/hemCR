@@ -30,13 +30,93 @@ library(RColorBrewer)
 library(ggplot2)
 library(ggExtra)
 library(cowplot)
-library(reticulate)
 library(wesanderson)
-use_python("/usr/bin/python3")
 
 #Set ggplot theme as classic
 theme_set(theme_classic())
 ```
+
+# Load both datasets
+
+```{r}
+WT <- readRDS("../QC.filtered.clustered.cells.RDS")
+KO <- readRDS("../Gmnc_KO/GmncKO.cells.RDS")
+```
+
+```{r}
+#We exclude meninges and immune cells from the KO dataset since we had also excluded theme from the WT
+KO <-  subset(KO, idents = c(0,1,2,3,5))
+WT <- subset(WT, subset = orig.ident == "Hem1")
+```
+
+
+```{r}
+p1 <- DimPlot(object = WT,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#ebcb2e", #"CR"
+            "#e7823a", #"ChP"
+            "#4cabdc", # Chp_prog
+            "#68b041", #"Dorso-Medial_pallium" 
+            "#e46b6b", #"Hem" 
+            "#e3c148", #"Medial_pallium"
+            "#046c9a", # Pallial
+            "#4990c9"#"Thalamic_eminence"
+                     )
+        )  & NoAxes()
+
+p2 <- DimPlot(KO,
+        reduction = "spring",
+        cols = c(wes_palette("FantasticFox1")[1:3],"#9ec22f",wes_palette("FantasticFox1")[5]),
+        pt.size = 0.5) & NoAxes()
+
+p1 + p2
+```
+```{r}
+WT <- NormalizeData(WT, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+KO <- NormalizeData(KO, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+```
+```{r}
+WT <- FindVariableFeatures(WT, selection.method = "vst", nfeatures = 2000)
+KO <- FindVariableFeatures(KO, selection.method = "vst", nfeatures = 2000)
+```
+
+# Integration
+
+```{r}
+WT.KO <- list(WT = WT, KO = KO)
+
+rm(list= ls()[!ls() %in% c("WT.KO")])
+gc()
+```
+
+
+```{r}
+features <- SelectIntegrationFeatures(object.list = WT.KO)
+
+WT.KO.anchors <- FindIntegrationAnchors(object.list = WT.KO, anchor.features = features, dims = 1:20)
+```
+
+
+```{r}
+saveRDS(WT.KO.anchors,"WT.KO.anchors.RDS")
+```
+
+
+```{r}
+WT.KO.integrated  <- readRDS("WT.KO.anchors.RDS")
+
+WT.KO.integrated <- IntegrateData(anchorset = WT.KO.integrated, dims = 1:20)
+
+DefaultAssay(WT.KO.integrated) <- "integrated"
+```
+
+```{r}
+WT.KO.integrated <- ScaleData(WT.KO.integrated, verbose = FALSE)
+WT.KO.integrated <- RunPCA(WT.KO.integrated, npcs = 20, verbose = FALSE)
+WT.KO.integrated <- RunUMAP(WT.KO.integrated, reduction = "pca", dims = 1:20, verbose = FALSE)
+```
+
 
 # Save the object
 
