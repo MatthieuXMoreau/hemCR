@@ -59,6 +59,76 @@ p2 <- DimPlot(object = Progenitors.data,
 
 p1 + p2
 ```
+# cells distribution
+
+```{r}
+CellCycledata <- Progenitors.data@meta.data
+
+ggplot(CellCycledata, aes(Revelio.DC1, Revelio.DC2)) +
+        geom_point(aes(color = Revelio.phase)) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+
+```
+```{r}
+p1 <- ggplot(CellCycledata, aes(Revelio.DC1, Revelio.DC2)) +
+        geom_point(aes(color = Revelio.phase)) +
+        scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+
+p2 <- ggplot(CellCycledata, aes(Revelio.DC1, Revelio.DC2)) +
+        geom_point(aes(color=nCount_RNA/10000), size=2, shape=16) + 
+        scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
+                              name='Revelio_cc')
+  
+p2$data <- p2$data[order(p2$data$nCount_RNA),]
+
+p1 + p2 
+```
+```{r}
+meanUMI <- CellCycledata %>%
+            mutate(Revelio.interval = cut(CellCycledata$Revelio.cc, seq(0, max(CellCycledata$Revelio.cc) + 0.05, 0.05), dig.lab = 2, right = FALSE)) %>%
+            select(Revelio.interval, nUMI) %>%
+            group_by(Revelio.interval) %>%
+            summarise(n=n(),
+                      meanUMI= mean(nUMI),
+                      sd= sd(nUMI)) %>%
+            mutate(se= sd/sqrt(n))  %>%
+            mutate(ic= se * qt((1-0.05)/2 + .5, n-1))
+
+meanUMI$max.Revelio.phase <- CellCycledata %>%
+            mutate(Revelio.interval = cut(CellCycledata$Revelio.cc, seq(0, max(CellCycledata$Revelio.cc) + 0.05, 0.05), dig.lab = 2, right = FALSE)) %>%
+            select(Revelio.interval, Revelio.phase) %>%
+            group_by(Revelio.interval, Revelio.phase) %>%
+            summarise(nb = n()) %>%
+            filter(nb == max(nb)) %>%
+            pull(Revelio.phase)
+
+p1 <- ggplot(meanUMI[1:20,], aes(x=Revelio.interval, y=meanUMI/10000, fill=max.Revelio.phase)) +
+        geom_bar(stat = "identity", width = 0.90) +
+        geom_errorbar(aes(ymin=(meanUMI-ic)/10000, ymax=(meanUMI+ic)/10000), width=.2) +
+        theme(axis.text.x = element_text(angle = 45, hjust=1))+
+        scale_fill_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+```
+
+
+```{r}
+p2 <- ggplot(CellCycledata, aes(x=Revelio.cc, fill=Cell_ident)) +
+   scale_fill_manual(values=c("#68b041", "#e3c148", "#e46b6b")) +
+   geom_density(adjust=1, alpha=.4)
+
+
+CCtable <- as.data.frame(table(CellCycledata$Revelio.phase, CellCycledata$Cell_ident))
+colnames(CCtable) <- c("Phase", "Domain", "value")
+domain <- factor(CCtable$Domain, level = c("Dorso-Medial_pallium", "Medial_pallium", "Hem"))
+
+p3 <- ggplot(CCtable, aes(fill=Phase, y=value, x=domain)) + 
+      geom_bar(position="fill", stat="identity") +
+      scale_fill_manual(values=c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
+
+
+p1 / p2 / p3
+```
+
+
 # Find all cell cycle viariable genes common to all domains
 
 ## Initialize a monocle object
@@ -223,7 +293,7 @@ Plot.Genes.trend <- function(Seurat.data,
 ```{r}
 Plot.Genes.trend(Seurat.data= Progenitors.data,
                  group.by = "Revelio.phase",
-                 genes= c("Gadd45g", "Hes6", "Sox4" #Module1
+                 genes= c("Gadd45g", "Hes6", "Sox4","Dll1", #Module1
                           ))
 
 Plot.Genes.trend(Seurat.data= Progenitors.data,
