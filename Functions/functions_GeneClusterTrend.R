@@ -23,7 +23,7 @@ Cluster.trend <- function(Datasrt, #The Seurat object
   p <- ggplot(data=Melt.Data, aes(x=Pseudotime, y=value)) +
       geom_smooth(method= Smooth.method, n= 50, fill="grey") +
       ylim(0,NA) +
-      geom_vline(xintercept = 1, colour = "red", linetype = 2) +
+      geom_vline(xintercept = 0.5, colour = "red", linetype = 2) +
       ggtitle(paste0("Cluster ", Which.cluster, " (", length(Cluster.Genes), " genes)"))
   
   return(p)
