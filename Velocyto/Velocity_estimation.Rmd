@@ -45,7 +45,7 @@ load("Hem1_velocyto_input.RData")
 
 # Velocity estimation and visualisation
 
-```{r cache=TRUE}
+```{r }
 # Velocity estimation
 rvel.cd <- gene.relative.velocity.estimates(Filtered.spliced,
                                             Filtered.unspliced,
@@ -56,7 +56,7 @@ rvel.cd <- gene.relative.velocity.estimates(Filtered.spliced,
                                             n.cores = parallel::detectCores() -2)
 ```
 
-```{r cache=TRUE}
+```{r }
 # Velocity on embedding
 Spring.velo <- show.velocity.on.embedding.cor(emb,
                                               rvel.cd,
@@ -118,7 +118,8 @@ global.vel.arrow <- Spring.velo$garrows %>%
                             y2 = y0 + (y1 - y0))
 
 ggplot(Spring.plot) +
-    geom_point(aes(x = Spring_1, y = Spring_2, colour = Cluster)) +
+    geom_point(aes(x=Spring_1, y=Spring_2),size=2,color="black") +
+    geom_point(aes(x = Spring_1, y = Spring_2, colour = Cluster),size=1.5) +
     scale_color_manual(values = colors) +
     geom_segment(data = global.vel.arrow,
                  aes(x = x0, xend = x2, y = y0, yend = y2),
@@ -126,6 +127,7 @@ ggplot(Spring.plot) +
                  arrow = arrow(length = unit(3, "points"), type = "open"),
                  colour = "grey20", alpha = 0.8) + 
    theme(legend.position="none")
+
 ```
 
 # Session Info
