@@ -65,7 +65,8 @@ p1 + p2
 CellCycledata <- Progenitors.data@meta.data
 
 ggplot(CellCycledata, aes(Revelio.DC1, Revelio.DC2)) +
-        geom_point(aes(color = Revelio.phase)) +
+        geom_point(aes(x=Revelio.DC1,y=Revelio.DC2),size=2,color="black") +
+        geom_point(aes(x=Revelio.DC1,y=Revelio.DC2, color = Revelio.phase),size=1.5) +
         scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5]))
 
 ```
