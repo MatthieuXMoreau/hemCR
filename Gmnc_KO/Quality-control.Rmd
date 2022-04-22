@@ -32,6 +32,7 @@ library(ggExtra)
 library(cowplot)
 library(reticulate)
 library(wesanderson)
+library(princurve)
 use_python("/usr/bin/python3")
 
 #Set ggplot theme as classic
@@ -334,7 +335,7 @@ DimPlot(Raw.data,
 ```
 # Sctransform normalization
 
-```{r}
+```{r class.output="scroll-100"}
 Raw.data <- SCTransform(Raw.data,
                         method = "glmGamPoi",
                         vars.to.regress = c("percent.mito"),
@@ -342,22 +343,125 @@ Raw.data <- SCTransform(Raw.data,
 ```
 # Run PCA and broad clustering
 
-```{r}
+```{r class.output="scroll-100"}
 Raw.data <- RunPCA(Raw.data, verbose = FALSE)
 
 Raw.data <- FindNeighbors(Raw.data,
                           dims = 1:20,
                           k.param = 8)
 
-Raw.data <- FindClusters(Raw.data, resolution = 0.1)
+Raw.data <- FindClusters(Raw.data, resolution = 0.2)
 ```
 
 ```{r}
 DimPlot(Raw.data,
         reduction = "spring",
-        cols = c(wes_palette("FantasticFox1"),"#9ec22f","grey60"),
+        cols = c("#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b", "#d14c8d", "#4cabdc", "#5ab793", "#e7823a", "#046c9a", "#4990c9"),
         pt.size = 0.5) & NoAxes()
 ```
+```{r}
+Raw.data$Broadclust.ident <- Raw.data$seurat_clusters
+```
+
+# Differentiating neurons sub-clustering
+
+## Extract differentiating neurons
+
+```{r}
+Neurons.data <-  subset(Raw.data, idents = 3)
+
+DimPlot(Neurons.data,
+        reduction = "spring",
+        pt.size = 1,
+        cols =  c("#cc3a1b")) + NoAxes()
+```
+## Fit pseudotime
+
+```{r}
+fit <- principal_curve(as.matrix(Neurons.data@meta.data[,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=TRUE,
+                       f = 1,
+                       stretch=0)
+```
+
+```{r}
+#Pseudotime score
+PseudotimeScore <- fit$lambda/max(fit$lambda)
+
+if (cor(PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', ]) > 0) {
+  Neurons.data$PseudotimeScore <- -(PseudotimeScore - max(PseudotimeScore))
+}
+
+cols <- brewer.pal(n =11, name = "Spectral")
+
+ggplot(Neurons.data@meta.data, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=PseudotimeScore), size=2, shape=16) + 
+  scale_color_gradientn(colours=rev(cols), name='Pseudotime score')
+```
+## Regress pseudotime and cluster cells into lineages
+
+```{r class.output="scroll-100"}
+Neurons.data <- SCTransform(Neurons.data,
+                            method = "glmGamPoi",
+                            vars.to.regress = c("PseudotimeScore", "nFeature_RNA"),
+                            verbose = T)
+
+```
+
+We used on transcription factors expression profile to perform lineage clustering
+
+```{r class.output="scroll-100"}
+TFs <- read.table("TF.csv", sep = ";")[,1]
+
+Neurons.data <- RunPCA(Neurons.data,
+                       features = TFs,
+                       verbose = FALSE)
+```
+
+```{r class.output="scroll-100"}
+Neurons.data <- FindNeighbors(Neurons.data,
+                          dims = c(1:10),
+                          k.param = 6)
+
+Neurons.data <- FindClusters(Neurons.data, resolution = 0.2)
+
+DimPlot(Neurons.data,
+        reduction = "spring",
+        cols = c("#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b", "#d14c8d", "#4cabdc", "#5ab793", "#e7823a", "#046c9a", "#4990c9"),
+        pt.size = 0.5) & NoAxes()
+```
+
+```{r}
+FeaturePlot(object = Neurons.data,
+            features = c("Foxg1", "Zfpm2",
+                         "Lhx1", "Zic5", "Zfp503"),
+            pt.size = 0.2,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "spring",
+            order = T) & NoAxes() & NoLegend()
+```
+
+```{r}
+Raw.data$Broadclust.ident <- sapply(Raw.data$Barcodes,
+                              FUN = function(x) {
+                                if (x %in% Neurons.data$Barcodes) {
+                                  x = paste0("Neuron_",Neurons.data@meta.data[x, "seurat_clusters"])
+                                } else {
+                                  x = Raw.data@meta.data[x, "Broadclust.ident"]
+                                  }
+                              })
+```
+
+
+```{r}
+DimPlot(Raw.data,
+        reduction = "spring",
+        group.by = "Broadclust.ident",
+        cols = c("#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b", "#d14c8d", "#4cabdc", "#5ab793", "grey90", "#e7823a", "#046c9a", "#4990c9"),
+        pt.size = 0.5) & NoAxes()
+```
+
 
 # Plot marker genes found in the WT dataset
 
@@ -365,7 +469,8 @@ DimPlot(Raw.data,
 FeaturePlot(object = Raw.data,
             features = c("Tbr1","Foxg1", "Trp73", "Htr2c",
                          "Shisa2", "Wif1", "Rassf4","Dkk3",
-                         "Dlk1", "Sulf1", "Ttr", "Foxc1", "C1qb"),
+                         "Dlk1", "Sulf1", "Ttr", "Fgf8", "Fgf17",
+                         "Foxc1", "C1qb"),
             pt.size = 0.2,
             cols = c("grey90", brewer.pal(9,"YlGnBu")),
             reduction = "spring",
