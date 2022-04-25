@@ -609,7 +609,7 @@ CRcells.genes.filtered <- CRcells.genes  %>% filter(qval < 1e-3)
 Common.genes <- intersect(Pallial.genes.filtered$gene_short_name, CRcells.genes.filtered$gene_short_name)
 ```
 
-```{r}
+```{r, cache=TRUE}
 # Smooth genes expression along the two trajectories
 nPoints <- 300
 
@@ -800,7 +800,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
 We manually correct the reordering so genes are aligned from top left to bottom rigth
 
 ```{r fig.dim=c(9, 5)}
-gene.order <- gene.order[c(245:1,612:246)]
+gene.order <- gene.order[c(243:1,622:244)]
 
 pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                                 c(300:1,#Pal 
@@ -824,7 +824,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
                     Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
-col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(100,200)))
+col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(125,175)))
 rownames(col.anno) <- 301:600
 
 pheatmap::pheatmap(CR_curve_matrix[gene.order,],
@@ -843,9 +843,70 @@ pheatmap::pheatmap(CR_curve_matrix[gene.order,],
                    main = "")
 
 ```
+
+```{r}
+diff.state <- Neuro.trajectories@meta.data %>%
+              filter(Lineage ==  "Cajal-Retzius_neurons") %>%
+              select("AP_signature1", "BP_signature1", "EN_signature1", "LN_signature1", "Pseudotime")
+
+AP.loess <- loess(AP_signature1 ~ Pseudotime, diff.state)
+AP.smooth <- predict(AP.loess,
+                     seq(0.01,1.5, length.out= 300))
+
+BP.loess <- loess(BP_signature1 ~ Pseudotime, diff.state)
+BP.smooth <- predict(BP.loess,
+                     seq(0.01,1.5, length.out= 300))
+
+EN.loess <- loess(EN_signature1 ~ Pseudotime, diff.state)
+EN.smooth <- predict(EN.loess,
+                     seq(0.01,1.5, length.out= 300))
+
+LN.loess <- loess(LN_signature1 ~ Pseudotime, diff.state)
+LN.smooth <- predict(LN.loess,
+                     seq(0.01,1.5, length.out= 300))
+
+Smoothed.states <- cbind(AP.smooth, BP.smooth, EN.smooth, LN.smooth)
+```
+
+```{r, fig.show="hide"}
+heatmap.states <- pheatmap::pheatmap(as.data.frame(t(Smoothed.states)),
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   gaps_col = 100,
+                   gaps_row = c(1,2,3),
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  rev(colorRampPalette(brewer.pal(n= 8, name = "RdBu"))(100)),
+                   breaks = seq(-1,1, length.out = 100),
+                   main = "")
+
+heatmap.gene <- pheatmap::pheatmap(CR_curve_matrix[gene.order,],
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   gaps_col = 100,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+```
+
+
+```{r}
+cowplot::plot_grid(heatmap.states$gtable, heatmap.gene$gtable,
+                   ncol = 1,
+                   align = "v",
+                   rel_heights = c(1,3),
+                   greedy = T)
+```
+
 ### Gene cluster trend
 
-```{r fig.dim=c(9,6)}
+```{r fig.dim=c(9,6), cache=TRUE}
 source("../Functions/functions_GeneClusterTrend.R")
 
 Plot.clust.trends(Neuro.trajectories,
@@ -878,8 +939,57 @@ write.table(apply(CR.gostres$result,2,as.character),
 DNA_damage_GOterm <- CR.gostres$result[CR.gostres$result$term_id %in% c("GO:0008630", "GO:0030330", "GO:0031571", "GO:0006974", "GO:0006977","GO:0033554",
                                                                                  "GO:0044773", "GO:0042771", "GO:0042770", "GO:2001021", "GO:1902229"),]
 
-DNA_damage_GOterm[,c(1,2,3,5,6,7,11)]
+DNA_damage_GOterm[,c(9,1,2,3,5,6,7,11)]
 ```
+
+### Multiciliation and DNA damage score
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.clustered.cells.RDS")
+```
+
+We took the 28 genes from (Lewis & Stracker 2021)[https://doi.org/10.1016/j.semcdb.2020.04.007]
+
+```{r}
+MCC.genes <- list(c("Trp73", "Gmnc", "Foxj1", "Myb", "Ccno", "Ccdc67", "Mcidas", "E2f4", "E2f5", "Ahr", "Trrap", "Cdc20b", "Ccdc78", "Rfx2", "Rfx3", "Foxn4", "Fank1", "Jazf1", "Ccna1", "Nek10", "Plk4", "Cep63", "Cep152", "Sass6", "Pcnt", "Pcm1", "Cetn2", "Tfdp1"))
+
+Hem.data <- AddModuleScore(Hem.data,
+                           features = MCC.genes,
+                           name = "MCC_score")
+
+p1 <- FeaturePlot(object = Hem.data,
+            features = c("MCC_score1"),
+            pt.size = 0.5,
+            cols = rev(brewer.pal(10,"Spectral")),
+            reduction = "spring",
+            order = T) & NoAxes()
+```
+
+```{r}
+DNA_damage_genes <- DNA_damage_GOterm %>%
+                    filter(query %in% c("Clust.2", "Clust.3", "Clust.4")) %>%
+                    filter(term_id == "GO:0033554") %>%
+                    pull(intersection) %>% strsplit("\\,") %>% unlist() %>% unique()
+```
+
+```{r}
+Hem.data <- AddModuleScore(Hem.data,
+                           features = DNA_damage_genes,
+                           name = "cellular_response_to_stress_score")
+
+p2 <- FeaturePlot(object = Hem.data,
+            features = c("cellular_response_to_stress_score1"),
+            pt.size = 0.5,
+            cols = rev(brewer.pal(10,"Spectral")),
+            reduction = "spring",
+            order = T) & NoAxes()
+```
+
+```{r}
+p1 + p2
+```
+
+### Go term on all CR genes
 
 ```{r}
 CR.gostres <- gost(query = as.character(CR.Gene.dynamique$Gene),
@@ -923,7 +1033,7 @@ pheatmap::pheatmap(CR_curve_matrix[gene.order2,],
                    #annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
                    #annotation_col = col.anno,
                    #annotation_colors = anno.colors,
-                   gaps_col = 70,
+                   gaps_col = 100,
                    show_colnames = F,
                    show_rownames = F,
                    fontsize_row = 8,
@@ -946,6 +1056,13 @@ CR_ChP_common.gostres <- gost(query = list("Clust.1" = CR_ChP_common_genes %>% f
 
 write.table(apply(CR_ChP_common.gostres$result,2,as.character),
             "CR_ChP_common_GO_res-by-waves.csv", sep = ";", quote = F, row.names = F)
+```
+
+```{r}
+DNA_damage_GOterm <- CR_ChP_common.gostres$result[CR_ChP_common.gostres$result$term_id %in% c("GO:0008630", "GO:0030330", "GO:0031571", "GO:0006974", "GO:0006977",
+                                                                                       "GO:0044773", "GO:0042771", "GO:0042770", "GO:2001021", "GO:1902229"),]
+
+DNA_damage_GOterm[,c(1,2,3,5,6,7,11)]
 ```
 
 ```{r}
@@ -1002,13 +1119,13 @@ anno.colors <- list(lineage = c(Pallial_neurons="#026c9a", Cajal_Retzius="#cc391
 
 
 pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                c(200:1,#Pal
-                                  201:400)], #CR
+                                c(300:1,#Pal
+                                  301:600)], #CR
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
                    annotation_row = Pal.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   annotation_col = data.frame(lineage = rep(c("Pallial_neurons","Cajal_Retzius"), each=200)),
+                   annotation_col = data.frame(lineage = rep(c("Pallial_neurons","Cajal_Retzius"), each=300)),
                    annotation_colors = anno.colors,
                    show_colnames = F,
                    show_rownames = F,
@@ -1024,13 +1141,13 @@ We manually correct the reordering so genes are aligned from top right to bottom
 gene.order <- gene.order[c(199:1,352:200)]
 
 pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                c(200:1,#Pal
-                                  201:400)], #CR
+                                c(300:1,#Pal
+                                  301:600)], #CR
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
                    annotation_row = Pal.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   annotation_col = data.frame(lineage = rep(c("Pallial_neurons","Cajal_Retzius"), each=200)),
+                   annotation_col = data.frame(lineage = rep(c("Pallial_neurons","Cajal_Retzius"), each=300)),
                    annotation_colors = anno.colors,
                    show_colnames = F,
                    show_rownames = F,
@@ -1046,17 +1163,17 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
                     Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
-col.anno <- data.frame(Cell.state = rep(c("Differentiating_cells","Cycling_RG"), c(130,70)))
-rownames(col.anno) <- 200:1
+col.anno <- data.frame(Cell.state = rep(c("Differentiating_cells","Cycling_RG"), c(200,100)))
+rownames(col.anno) <- 300:1
 
-pheatmap::pheatmap(Pal_curve_matrix[gene.order,200:1],
+pheatmap::pheatmap(Pal_curve_matrix[gene.order,300:1],
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
                    annotation_row = Pal.Gene.dynamique %>% dplyr::select(Gene.Clusters),
                    annotation_col = col.anno,
                    annotation_colors = anno.colors,
-                   gaps_col = 130,
+                   gaps_col = 200,
                    show_colnames = F,
                    show_rownames = F,
                    fontsize_row = 8,
@@ -1068,7 +1185,7 @@ pheatmap::pheatmap(Pal_curve_matrix[gene.order,200:1],
 
 ### Gene cluster trend
 
-```{r fig.dim=c(9,6)}
+```{r fig.dim=c(9,6), cache=TRUE}
 Plot.clust.trends(Neuro.trajectories,
                    Lineage = "Pallial_neurons",
                    Which.cluster = 1:5,
@@ -1086,7 +1203,7 @@ Pal.gostres <- gost(query = as.character(Pal.Gene.dynamique$Gene),
                 numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
 
 write.table(apply(Pal.gostres$result, 2, as.character),
-            "Pal.gostrescsv", sep = ";", quote = F, row.names = F)
+            "Pal.gostres.csv", sep = ";", quote = F, row.names = F)
 ```
 
 
@@ -1096,6 +1213,7 @@ DNA_damage_GOterm <- Pal.gostres$result[Pal.gostres$result$term_id %in% c("GO:00
 
 DNA_damage_GOterm[,c(1,2,3,5,6,7,11)]
 ```
+
 
 # Session Info
 
