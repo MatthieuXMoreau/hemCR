@@ -824,7 +824,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
                     Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
-col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(125,175)))
+col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(100,200)))
 rownames(col.anno) <- 301:600
 
 pheatmap::pheatmap(CR_curve_matrix[gene.order,],
@@ -986,7 +986,7 @@ p2 <- FeaturePlot(object = Hem.data,
 ```
 
 ```{r}
-p1 + p2
+p1 + p2 + patchwork::plot_layout(ncol = 2)
 ```
 
 ### Go term on all CR genes
