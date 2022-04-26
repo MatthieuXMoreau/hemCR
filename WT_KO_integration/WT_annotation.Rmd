@@ -1,0 +1,247 @@
+---
+title: "Re-annotate WT dataset for projection onto KO datatset"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
+
+# To use biomart 
+new_config <- httr::config(ssl_verifypeer = FALSE)
+httr::set_config(new_config, override = FALSE)
+```
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(princurve)
+library(Matrix)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# Load and filter progenitors data
+
+```{r}
+Hem.data <- readRDS("../QC.filtered.clustered.cells.RDS")
+```
+
+```{r}
+DimPlot(object = Hem.data,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#ebcb2e", #"ChP"
+                 "#9ec22f", #"ChP_progenitors"
+                 "#e7823a", # CR
+                 "#cc3a1b", #"Dorso-Medial_pallium" 
+                 "#d14c8d", #"Hem" 
+                 "#4cabdc", #"Medial_pallium"
+                 "#046c9a", # Pallial
+                 "#4990c9" #"Thalamic_eminence"
+                 )
+        )
+```
+
+# Annotate ChP trajectory
+
+```{r}
+ChP.data <-  subset(Hem.data, idents = c("ChP"))
+
+DimPlot(ChP.data,
+        reduction = "spring",
+        pt.size = 1,
+        cols =  c("#83c3b8", "#009fda")) + NoAxes()
+```
+
+```{r}
+Trajectory.ChP <- ChP.data@meta.data %>%
+                    select("Barcodes", "Spring_1", "Spring_2", "Cell_ident")
+```
+
+```{r}
+fit <- principal_curve(as.matrix(Trajectory.ChP[,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=TRUE,
+                       f = .7,
+                       stretch=0)
+
+#Pseudotime score
+Trajectory.ChP$Pseudotime <- fit$lambda/max(fit$lambda)
+```
+```{r}
+cols <- brewer.pal(n =11, name = "Spectral")
+
+ggplot(Trajectory.ChP, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime), size=2, shape=16) + 
+  scale_color_gradientn(colours=rev(cols), name='Pseudotime score')
+```
+```{r}
+Trajectory.ChP$Cell.state <- cut(Trajectory.ChP$Pseudotime,
+                                       3,
+                                       include.lowest = T,
+                                       labels=c("Early","Mid","Late"))
+```
+
+```{r}
+Trajectory.ChP$Cell.state <- paste0(Trajectory.ChP$Cell_ident, "_", Trajectory.ChP$Cell.state)
+
+ggplot(Trajectory.ChP, aes(Spring_1, Spring_2)) +
+        geom_point(aes(color= Cell.state), size=0.5) +
+        scale_color_manual(values= c("#68b041", "#e3c148", "#b7d174"))
+```
+
+# Differentiating neurons trajectory
+
+```{r}
+Neurons.data <-  subset(Hem.data, idents = c("Cajal-Retzius_neurons", "Pallial_neurons"))
+
+DimPlot(Neurons.data ,
+        reduction = "spring",
+        pt.size = 1,
+        cols =  c("#cc391b","#026c9a")
+        ) + NoAxes()
+```
+## Cajal-Retzius cells
+
+```{r}
+Trajectories.Hem <- Neurons.data@meta.data %>%
+                    select("Barcodes", "Spring_1", "Spring_2", "Cell_ident") %>%
+                    filter(Cell_ident == "Cajal-Retzius_neurons")
+```
+
+```{r}
+fit <- principal_curve(as.matrix(Trajectories.Hem[,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=TRUE,
+                       f = .7,
+                       stretch=0)
+
+#Pseudotime score
+Trajectories.Hem$Pseudotime <- fit$lambda/max(fit$lambda)
+```
+
+```{r}
+if (cor(Trajectories.Hem$Pseudotime, Neurons.data@assays$SCT@data['Hmga2', Trajectories.Hem$Barcodes]) > 0) {
+  Trajectories.Hem$Pseudotime <- -(Trajectories.Hem$Pseudotime - max(Trajectories.Hem$Pseudotime))
+}
+```
+
+## Pallial neurons
+
+```{r}
+Trajectories.Pallial <- Neurons.data@meta.data %>%
+                        select("Barcodes", "Spring_1", "Spring_2", "Cell_ident") %>%
+                        filter(Cell_ident == "Pallial_neurons")
+                  
+```
+
+```{r}
+fit <- principal_curve(as.matrix(Trajectories.Pallial[,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=TRUE,
+                       f = .7,
+                       stretch=0)
+
+#Pseudotime score
+Trajectories.Pallial$Pseudotime <- fit$lambda/max(fit$lambda)
+```
+
+```{r}
+if (cor(Trajectories.Pallial$Pseudotime, Neurons.data@assays$SCT@data['Hmga2', Trajectories.Pallial$Barcodes]) > 0) {
+  Trajectories.Pallial$Pseudotime <- -(Trajectories.Pallial$Pseudotime - max(Trajectories.Pallial$Pseudotime))
+}
+```
+
+## Combine the two trajectories' data
+
+```{r}
+Trajectories.neurons <- rbind(Trajectories.Pallial, Trajectories.Hem)
+```
+
+```{r}
+ggplot(Trajectories.neurons, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime), size=2, shape=16) + 
+  scale_color_gradientn(colours=rev(cols), name='Pseudotime score')
+```
+
+```{r}
+hist(Trajectories.neurons$Pseudotime, breaks = 100)
+abline(v=c(0.4,0.68), col ="blue")
+```
+
+
+```{r}
+Trajectories.neurons$Cell.state <- cut(Trajectories.neurons$Pseudotime,
+                                       c(0,0.4,0.68,1),
+                                       include.lowest = T,
+                                       labels=c("BP","EN","LN"))
+
+ggplot(Trajectories.neurons, aes(Spring_1, Spring_2)) +
+        geom_point(aes(color= Cell.state), size=0.5) +
+        scale_color_manual(values= c("#68b041", "#e3c148", "#b7d174"))
+```
+
+```{r}
+Trajectories.neurons$Cell.state <- paste0(Trajectories.neurons$Cell_ident, "_", Trajectories.neurons$Cell.state)
+```
+
+# Transfert all cell state annotatio to the full dataset
+
+```{r}
+New.labels <- rbind(Trajectory.ChP,Trajectories.neurons)
+```
+
+
+```{r}
+Hem.data$Cell.state <- sapply(Hem.data$Barcodes,
+                              FUN = function(x) {
+                                if (x %in% New.labels$Barcodes) {
+                                  x = New.labels[x, "Cell.state"]
+                                } else {
+                                  x = Hem.data@meta.data[x, "Cell_ident"]
+                                  }
+                              })
+```
+
+```{r}
+DimPlot(object = Hem.data,
+        group.by = "Cell.state",
+        reduction = "spring",
+        cols = c("#7293c8", "#b79f0b", "#3ca73f","#31b6bd",
+            "#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b", "#d14c8d", "#4cabdc", "#5ab793", "#e7823a", "#046c9a", "#4990c9"))
+```
+```{r}
+saveRDS(Hem.data, "../QC.filtered.clustered.cells.RDS")
+```
+
+
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
