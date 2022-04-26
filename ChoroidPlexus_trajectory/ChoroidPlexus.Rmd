@@ -24,7 +24,6 @@ new_config <- httr::config(ssl_verifypeer = FALSE)
 httr::set_config(new_config, override = FALSE)
 ```
 
-In this part of the analysis we apply [Revelio](https://github.com/danielschw188/Revelio) algorithm to explore cell cycle dynamic of pallial and hem domain radial glial cells
 
 # Load libraries
 
