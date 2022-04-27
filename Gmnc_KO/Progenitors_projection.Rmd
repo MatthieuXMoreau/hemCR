@@ -87,7 +87,7 @@ TFs <- features[features %in% TFs]
 ```{r}
 KO.anchors <- FindTransferAnchors(reference = WT.KO[["WT"]],
                                   query = WT.KO[["KO"]],
-                                  features = features,
+                                  features = TFs,
                                   reduction = "rpca",
                                   k.anchor = 5,
                                   k.filter = 100,
