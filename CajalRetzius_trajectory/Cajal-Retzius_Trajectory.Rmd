@@ -6,7 +6,7 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
   html_document: 
     code_download: yes
-    df_print: tibble
+    df_print: paged
     highlight: haddock
     theme: cosmo
     css: "../style.css"
