@@ -24,6 +24,8 @@ knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=
 
 ```{r message=FALSE, warning=FALSE}
 library(Seurat)
+library(scrattch.hicat)
+library(FateID)
 library(Matrix)
 library(dplyr)
 library(RColorBrewer)
@@ -333,17 +335,19 @@ DimPlot(Raw.data,
         reduction = "spring",
         pt.size = 0.5) & NoAxes()
 ```
-# Sctransform normalization
+# Broad clustering
 
-```{r class.output="scroll-100"}
+## Sctransform normalization
+
+```{r class.output="scroll-100", cache=TRUE}
 Raw.data <- SCTransform(Raw.data,
                         method = "glmGamPoi",
                         vars.to.regress = c("percent.mito"),
                         verbose = T)
 ```
-# Run PCA and broad clustering
+## Run PCA and broad clustering
 
-```{r class.output="scroll-100"}
+```{r class.output="scroll-100", cache=TRUE}
 Raw.data <- RunPCA(Raw.data, verbose = FALSE)
 
 Raw.data <- FindNeighbors(Raw.data,
@@ -399,54 +403,411 @@ ggplot(Neurons.data@meta.data, aes(Spring_1, Spring_2)) +
   geom_point(aes(color=PseudotimeScore), size=2, shape=16) + 
   scale_color_gradientn(colours=rev(cols), name='Pseudotime score')
 ```
-## Regress pseudotime and cluster cells into lineages
+# Late Neurons diversity
 
-```{r class.output="scroll-100"}
-Neurons.data <- SCTransform(Neurons.data,
-                            method = "glmGamPoi",
-                            vars.to.regress = c("PseudotimeScore", "nFeature_RNA"),
-                            verbose = T)
+## Extract late neurons
 
-```
-
-We used on transcription factors expression profile to perform lineage clustering
-
-```{r class.output="scroll-100"}
-TFs <- read.table("TF.csv", sep = ";")[,1]
-
-Neurons.data <- RunPCA(Neurons.data,
-                       features = TFs,
-                       verbose = FALSE)
-```
-
-```{r class.output="scroll-100"}
-Neurons.data <- FindNeighbors(Neurons.data,
-                          dims = c(1:10),
-                          k.param = 6)
-
-Neurons.data <- FindClusters(Neurons.data, resolution = 0.2)
-
-DimPlot(Neurons.data,
-        reduction = "spring",
-        cols = c("#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b", "#d14c8d", "#4cabdc", "#5ab793", "#e7823a", "#046c9a", "#4990c9"),
-        pt.size = 0.5) & NoAxes()
+```{r}
+Neurons.data$Cell.state <- cut(Neurons.data$PseudotimeScore,
+                              c(0,0.4,0.8,1),
+                              include.lowest = T,
+                              labels=c("BP","EN","LN"))
 ```
 
 ```{r}
-FeaturePlot(object = Neurons.data,
+DimPlot(Neurons.data,
+        group.by = "Cell.state",
+        reduction = "spring",
+        cols = c("#ebcb2e", "#9ec22f", "#a9961b"),
+        pt.size = 1.5) & NoAxes()
+```
+```{r}
+LN.data <- subset(Neurons.data, subset = Cell.state == "LN")
+```
+
+```{r}
+DimPlot(LN.data,
+        reduction = "spring",
+        cols = c("#ebcb2e", "#9ec22f", "#a9961b"),
+        pt.size = 1.5) & NoAxes()
+```
+## Prepare the dataset for clustering with scrattch.hicat
+
+### Gene filtering
+
+```{r}
+# Exclude genes detected in less than 3 cells
+num.cells <- Matrix::rowSums(LN.data@assays[["RNA"]]@counts > 0)
+genes.use <- names(x = num.cells[which(x = num.cells >= 3)])
+
+GenesToRemove <- c(grep(pattern = "(^Rpl|^Rps|^Mrp)", x = genes.use, value = TRUE),
+                   grep(pattern = "^mt-", x = genes.use, value = TRUE),
+                   "Xist")
+
+genes.use <- genes.use[!genes.use %in% GenesToRemove]
+```
+
+### Normalization
+
+```{r}
+dgeMatrix_count <- as.matrix(LN.data@assays[["RNA"]]@counts)[rownames(LN.data@assays[["RNA"]]@counts) %in% genes.use,]
+dgeMatrix_cpm <- cpm(dgeMatrix_count)
+norm.dat <- log2(dgeMatrix_cpm + 1)
+
+norm.dat <- Matrix(norm.dat, sparse = TRUE)
+Data.matrix <- list(raw.dat=dgeMatrix_count, norm.dat=norm.dat)
+attach(Data.matrix)
+```
+
+### Exclude unwanted sources of variation
+
+```{r}
+gene.counts <- log2(colSums(as.matrix(Data.matrix$norm.dat) > 0))
+nUMI <- log2(colSums(Data.matrix$raw.dat))
+perctMito <- LN.data$percent.mito
+perctRibo <- LN.data$percent.ribo
+Pseudotime <- LN.data$PseudotimeScore
+
+rm.eigen <- as.matrix(cbind(gene.counts,
+                            nUMI,
+                            perctMito,
+                            perctRibo,
+                            Pseudotime))
+
+row.names(rm.eigen) <- names(gene.counts)
+
+colnames(rm.eigen) <- c("log2nGenes",
+                        "log2nUMI",
+                        "perctMito",
+                        "perctRibo",
+                        "Pseudotime ")
+
+rm(gene.counts, nUMI, perctMito, perctRibo, Pseudotime)
+```
+
+## Iterative clustering
+
+```{r}
+# Parameters for iterative clustering
+de.param <- de_param(padj.th     = 0.01, 
+                     lfc.th      = 0.9,
+                     low.th      = 1, 
+                     q1.th       = 0.25, 
+                     q2.th       = NULL,
+                     q.diff.th   = 0.7,
+                     de.score.th = 80,
+                     min.cells   = 10)
+```
+
+
+```{r class.output="scroll-100", cache=TRUE}
+iter.result <- iter_clust(norm.dat, 
+                          counts = raw.dat,
+                          dim.method = "pca",
+                          max.dim = 15,
+                          k.nn = 8,
+                          de.param = de.param,
+                          rm.eigen = rm.eigen,
+                          rm.th = 0.7,
+                          vg.padj.th = 0.5,
+                          method = "louvain",
+                          prefix = "test-iter_clust",
+                          verbose = F)
+```
+
+```{r}
+# Merge clusters which are not seperable by DEGs
+rd.dat <- t(norm.dat[iter.result$markers,])
+merge.result <- merge_cl(norm.dat, 
+                         cl = iter.result$cl, 
+                         rd.dat = rd.dat,
+                         de.param = de.param)
+
+cat(length(unique(merge.result$cl))," Clusters")
+```
+```{r}
+LN.data$iter.clust <- merge.result$cl
+
+Idents(LN.data) <- "iter.clust"
+
+colors <-  c("#ebcb2e", "#9ec22f", "#cc3a1b")
+
+DimPlot(LN.data,
+        reduction = "spring",
+        #cols = colors,
+        pt.size = 1.5) & NoAxes()
+```
+
+```{r class.output="scroll-100"}
+Neurons.markers <- FindAllMarkers(LN.data,
+                                  test.use = "roc",
+                                  only.pos = TRUE,
+                                  min.pct = 0.25,
+                                  logfc.threshold = 0.25)
+```
+```{r}
+top10 <- Neurons.markers %>%
+          group_by(cluster) %>%
+          filter(power > 0.45)
+
+DoHeatmap(LN.data,
+          group.colors = c("#ebcb2e", "#9ec22f", "#cc3a1b"),
+          features = top10$gene) + NoLegend()
+```
+```{r}
+FeaturePlot(object = LN.data,
             features = c("Foxg1", "Zfpm2",
                          "Lhx1", "Zic5", "Zfp503"),
-            pt.size = 0.2,
+            pt.size = 1,
             cols = c("grey90", brewer.pal(9,"YlGnBu")),
             reduction = "spring",
             order = T) & NoAxes() & NoLegend()
 ```
+## Use fate ID to infer lineages along differentiating cells
 
 ```{r}
+Neurons.data$Broadclust.ident <- sapply(Neurons.data$Barcodes,
+                              FUN = function(x) {
+                                if (x %in% LN.data$Barcodes) {
+                                  x = paste0("Neuron_", LN.data@meta.data[x, "iter.clust"])
+                                } else {
+                                  x = Neurons.data@meta.data[x, "Broadclust.ident"]
+                                  }
+                              })
+
+Idents(Neurons.data) <- "Broadclust.ident"
+```
+
+```{r}
+DimPlot(Neurons.data,
+        reduction = "spring",
+        cols = c("#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b", "#d14c8d", "#4cabdc", "#5ab793", "grey90", "#e7823a", "#046c9a", "#4990c9", "grey60"),
+        pt.size = 0.5) & NoAxes()
+```
+
+## Run FateID
+
+### FateID
+
+```{r class.output="scroll-100", cache=TRUE}
+Neurons.data <- SCTransform(Neurons.data,
+                            method = "glmGamPoi",
+                            vars.to.regress = c("percent.mito", "percent.ribo"),
+                            verbose = T)
+
+Neurons.data <- FindVariableFeatures(Neurons.data, selection.method = "vst", nfeatures = 1500)
+```
+
+```{r}
+Norm.Mat <- as.data.frame(as.matrix(Neurons.data@assays$SCT@data[Neurons.data@assays$SCT@var.features,]))
+
+#Rename idents
+id <- 4:1
+names(id) <- levels(Neurons.data)
+Neurons.data <- RenameIdents(Neurons.data, id)
+
+# Set a cluster assignment factor for each cells
+ClusterIdent <- Idents(Neurons.data)
+names(ClusterIdent) <- names(Idents(Neurons.data))
+
+Attractors <- 1:3
+
+# Distance in spring space
+z <- as.matrix(dist(cbind(Neurons.data$Spring_1, Neurons.data$Spring_2)))
+```
+
+```{r class.output="scroll-100", cache=TRUE}
+Infered.Fate.bias  <- fateBias(Norm.Mat, ClusterIdent, Attractors,
+                               z = z,
+                               minnr=20,
+                               minnrh=30,
+                               adapt=TRUE,
+                               confidence=0.75,
+                               nbfactor=5,
+                               use.dist=FALSE,
+                               seed=1234,
+                               nbtree=NULL)
+```
+
+### Inspect test set used iteratively
+
+```{r}
+Neurons.data$FateID.iteration <- "Attractors"
+Idents(Neurons.data) <- "FateID.iteration"
+
+for (i in seq(0, length(Infered.Fate.bias$rfl), by = 5)[-1]) {
+  iter <- seq(i-4,i)
+  Barcodes <- c()
+  for (j in iter) {
+    Barcodes <- c(Barcodes, names(Infered.Fate.bias$rfl[[j]]$test$predicted))
+  }
+  Neurons.data <- SetIdent(Neurons.data, cells = Barcodes, value = paste0("iter ",iter[1]," to ", iter[4]))
+}
+
+DimPlot(Neurons.data,
+        reduction = "spring",
+        pt.size = 1) & NoAxes()
+```
+
+### Import lineage bias into Seurat meta.data
+
+```{r}
+probs <- Infered.Fate.bias$probs[,seq(length(Attractors))]
+
+Neurons.data$prob.1 <- probs$t1
+Neurons.data$prob.2 <- probs$t2
+Neurons.data$prob.3 <- probs$t3
+
+FeaturePlot(object = Neurons.data,
+            features = c("prob.1", "prob.2", "prob.3"),
+            pt.size = 0.5,
+            cols = rev(RColorBrewer::brewer.pal(n = 11, name = "Spectral")),
+            reduction = "spring",
+            order = T) & NoAxes() & NoLegend()
+```
+```{r}
+New.data <- data.frame(barcode=Neurons.data$Barcodes,
+                       cluster= Neurons.data$Broadclust.ident,
+                       spring1= Neurons.data$Spring_1,
+                       spring2= Neurons.data$Spring_2,
+                       prob.1= Neurons.data$prob.1,
+                       prob.2= Neurons.data$prob.2,
+                       prob.3 = Neurons.data$prob.3)
+
+New.data$lineage.bias <- colnames(New.data[,5:7])[apply(New.data[,5:7],1,which.max)]
+
+ggplot(New.data, aes(spring1, spring2, colour = lineage.bias)) +
+  scale_color_manual(values=c("#e7823a","#cc391b","#026c9a","#d14c8d")) +
+  geom_point() 
+```
+
+# Transfert ident to the full dataset
+
+```{r}
+Neurons.data$Lineage.bias <- New.data$lineage.bias
+
 Raw.data$Broadclust.ident <- sapply(Raw.data$Barcodes,
                               FUN = function(x) {
                                 if (x %in% Neurons.data$Barcodes) {
-                                  x = paste0("Neuron_",Neurons.data@meta.data[x, "seurat_clusters"])
+                                  x = paste0("Neuron_",Neurons.data@meta.data[x, "Lineage.bias"])
+                                } else {
+                                  x = Raw.data@meta.data[x, "Broadclust.ident"]
+                                  }
+                              })
+
+Idents(Raw.data) <- "Broadclust.ident"
+```
+
+
+```{r}
+DimPlot(Raw.data,
+        reduction = "spring",
+        cols = c("#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b", "#d14c8d", "#4cabdc", "#5ab793", "#e7823a", "#046c9a", "grey90", "#4990c9"),
+        pt.size = 0.5) & NoAxes()
+```
+```{r}
+rm(list = ls()[!ls() %in% "Raw.data"])
+gc()
+```
+# Project progenitors domain ident from WT
+
+```{r}
+WT.KO <- list(WT = readRDS("../QC.filtered.clustered.cells.RDS") %>%
+                subset(subset = orig.ident == "Hem1" & Cell_ident %in% c("ChP_progenitors", "ChP",
+                                                                         "Dorso-Medial_pallium", "Medial_pallium",
+                                                                         "Hem", "Thalamic_eminence") ),
+              KO = Raw.data %>% subset(idents = c(1,2,3,5)))
+
+```
+
+
+```{r}
+p1 <- DimPlot(object = WT.KO[["WT"]],
+        group.by = "Cell.state",
+        reduction = "spring",
+        cols = c("#31b6bd", "#ebcb2e", "#9ec22f", "#cc3a1b", "#d14c8d", "#4cabdc", "#5ab793", "#e7823a", "#046c9a", "#4990c9"),
+        pt.size = 1.5
+        )  & NoAxes()
+
+p2 <- DimPlot(WT.KO[["KO"]],
+        reduction = "spring",
+        group.by = "Broadclust.ident",
+        cols = c("#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b"),
+        pt.size = 1.5) & NoAxes()
+
+p1 + p2
+```
+```{r}
+WT.KO[["WT"]] <- NormalizeData(WT.KO[["WT"]], normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+WT.KO[["KO"]] <- NormalizeData(WT.KO[["KO"]], normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+```
+
+```{r}
+WT.KO[["WT"]] <- FindVariableFeatures(WT.KO[["WT"]], selection.method = "vst", nfeatures = 2000)
+WT.KO[["KO"]] <- FindVariableFeatures(WT.KO[["KO"]], selection.method = "vst", nfeatures = 2000)
+```
+
+```{r}
+features <- SelectIntegrationFeatures(object.list = WT.KO, nfeatures = 1500)
+
+TFs <- read.table("TF.csv", sep = ";")[,1]
+TFs <- features[features %in% TFs]
+```
+
+## transfert identity labels WT to KO
+
+```{r class.output="scroll-100", cache=TRUE}
+KO.anchors <- FindTransferAnchors(reference = WT.KO[["WT"]],
+                                  query = WT.KO[["KO"]],
+                                  features = TFs,
+                                  reduction = "rpca",
+                                  k.anchor = 5,
+                                  k.filter = 100,
+                                  k.score = 30,
+                                  npcs = 25,
+                                  dims = 1:25,
+                                  max.features = 200)
+
+predictions <- TransferData(anchorset = KO.anchors,
+                            refdata = WT.KO[["WT"]]$Cell.state,
+                            dims = 1:25)
+
+WT.KO[["KO"]] <- AddMetaData(WT.KO[["KO"]], metadata = predictions)
+```
+```{r}
+cols <- brewer.pal(n =11, name = "Spectral")
+
+ggplot(WT.KO[["KO"]]@meta.data, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=prediction.score.max), size=1, shape=16) + 
+  scale_color_gradientn(colours=rev(cols), name='prediction.score.max')
+```
+
+```{r}
+p1 <- DimPlot(object = WT.KO[["WT"]],
+        group.by = "Cell.state",
+        reduction = "spring",
+        cols = c("#7293c8", "#b79f0b", "#3ca73f","#31b6bd",
+                 "#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b",
+                 "#d14c8d", "#4cabdc", "#5ab793", "#e7823a",
+                 "#046c9a", "#4990c9"),
+        pt.size = 1)  & NoAxes()
+
+p2 <- DimPlot(WT.KO[["KO"]],
+              group.by = "predicted.id",
+              reduction = "spring",
+              cols = c("#31b6bd", "#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b"),
+              pt.size = 1) & NoAxes()
+
+p1 + p2
+```
+
+## Transfert to the full dataset
+
+```{r}
+Raw.data$Cell.ident <- sapply(Raw.data$Barcodes,
+                              FUN = function(x) {
+                                if (x %in% WT.KO[["KO"]]$Barcodes) {
+                                  x = WT.KO[["KO"]]@meta.data[x, "predicted.id"]
                                 } else {
                                   x = Raw.data@meta.data[x, "Broadclust.ident"]
                                   }
@@ -455,28 +816,14 @@ Raw.data$Broadclust.ident <- sapply(Raw.data$Barcodes,
 
 
 ```{r}
-DimPlot(Raw.data,
+DimPlot(object = Raw.data,
+        group.by = "Cell.ident",
         reduction = "spring",
-        group.by = "Broadclust.ident",
-        cols = c("#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b", "#d14c8d", "#4cabdc", "#5ab793", "grey90", "#e7823a", "#046c9a", "#4990c9"),
-        pt.size = 0.5) & NoAxes()
+        cols = c( "#4cabdc", "#7293c8", "grey40" ,"#3ca73f","grey80",
+                  "#31b6bd", "#ebcb2e", "#9ec22f", "#a9961b",
+                 "#046c9a", "#4990c9","#e7823a", "#cc3a1b"),
+        pt.size = 0.5)  & NoAxes()
 ```
-
-
-# Plot marker genes found in the WT dataset
-
-```{r}
-FeaturePlot(object = Raw.data,
-            features = c("Tbr1","Foxg1", "Trp73", "Htr2c",
-                         "Shisa2", "Wif1", "Rassf4","Dkk3",
-                         "Dlk1", "Sulf1", "Ttr", "Fgf8", "Fgf17",
-                         "Foxc1", "C1qb"),
-            pt.size = 0.2,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes() & NoLegend()
-```
-
 
 # Save the object
 
