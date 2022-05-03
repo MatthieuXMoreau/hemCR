@@ -48,23 +48,23 @@ theme_set(theme_classic())
 
 ```{r}
 WT <- readRDS("../QC.filtered.clustered.cells.RDS")
-KO <- readRDS("./GmncKO.progenitors_prohected.RDS") %>% subset(idents = c(0,1,2,3,4))
+KO <- readRDS("./GmncKO.cells.RDS") %>% subset(idents = c(6:9), invert = T)
 ```
 
 ```{r}
 DimPlot(object = KO,
         group.by = "Cell.ident",
         reduction = "spring",
-        cols = c("#7293c8", "#b79f0b", "#3ca73f","#31b6bd",
-                 "#ebcb2e", "#9ec22f", "#a9961b", "#cc3a1b",
-                 "#d14c8d", "#4cabdc", "#5ab793", "#e7823a",
-                 "#046c9a", "#4990c9"),
-        pt.size = 1)  & NoAxes()
+        cols = c( "#4cabdc", "#7293c8", "#3ca73f",
+                  "#31b6bd","#a9961b", "#ebcb2e", "#9ec22f", 
+                  "#e7823a"),
+        pt.size = 0.5)  & NoAxes()
 ```
+
 # Expression of MCC and stress response in WT and KO
 
 ```{r}
-MCC.genes <- list(c("Trp73", "Gmnc", "Foxj1", "Myb", "Ccno", "Ccdc67", "Mcidas",
+MCC.genes <- list(c("Trp73", "Gmnc", "Foxj1", "Myb", "Ccno", "Ccdc67", "Deup1","Mcidas",
                     "E2f4", "E2f5", "Ahr", "Trrap", "Cdc20b", "Ccdc78", "Rfx2",
                     "Rfx3", "Foxn4", "Fank1", "Jazf1", "Ccna1", "Nek10", "Plk4",
                     "Cep63", "Cep152", "Sass6", "Pcnt", "Pcm1", "Cetn2", "Tfdp1"))
@@ -145,19 +145,51 @@ for (i in 1:2){
 
 MCC.scores.plot / Stress.score.plot
 ```
+# Compute differentiation states scores
 
-
-# Find DEG along the mutant tajectories
+## AP
 
 ```{r}
-Hem.data$Lineage <- sapply(Hem.data$Cell_ident,
+APgenes <- c("Rgcc", "Sparc", "Hes5","Hes1", "Slc1a3",
+             "Ddah1", "Ldha", "Hmga2","Sfrp1", "Id4",
+             "Creb5", "Ptn", "Lpar1", "Rcn1","Zfp36l1",
+             "Sox9", "Sox2", "Nr2e1", "Ttyh1", "Trip6")
+```
+
+## BP
+
+```{r}
+BPgenes <- c("Eomes", "Igsf8", "Insm1", "Elavl2", "Elavl4",
+             "Hes6","Gadd45g", "Neurog2", "Btg2", "Neurog1")
+```
+
+## EN
+
+```{r}
+ENgenes <- c("Mfap4", "Nhlh2", "Nhlh1", "Ppp1r14a", "Nav1",
+             "Neurod1", "Sorl1", "Svip", "Cxcl12", "Tenm4",
+             "Dll3", "Rgmb", "Cntn2", "Vat1")
+```
+
+## LN
+
+```{r}
+LNgenes <- c("Snhg11", "Pcsk1n", "Mapt", "Ina", "Stmn4",
+             "Gap43", "Tubb2a", "Ly6h","Ptprd", "Mef2c")
+```
+
+
+# Differentiating neurons pseudotime
+
+## Group cells in Pallial or CR lineage
+
+```{r}
+KO$Lineage <- sapply(KO$Cell.ident,
                               FUN = function(x) {
-                                if (x %in% c("Cajal-Retzius_neurons", "Hem")) {
+                                if (x %in% c("Neuron_prob.2", "Hem")) {
                                   x = "Cajal-Retzius_neurons"
-                                } else if (x %in% c("Pallial_neurons", "Medial_pallium")) {
+                                } else if (x %in% c("Neuron_prob.3", "Medial_pallium")) {
                                   x = "Pallial_neurons"
-                                } else if(x %in% c("ChP", "ChP_progenitors")) {
-                                   x =  "Choroid_Plexus"
                                 } else {
                                   x = "other"
                                   }
@@ -165,100 +197,49 @@ Hem.data$Lineage <- sapply(Hem.data$Cell_ident,
 ```
 
 ```{r}
-DimPlot(Hem.data,
+DimPlot(KO,
         reduction = "spring",
         group.by = "Lineage",
         pt.size = 1,
-        cols =  c("#cc391b","#e7823a","#969696","#026c9a")
+        cols =  c("#cc391b","#969696","#026c9a")
         ) + NoAxes()
 ```
 
-# Differentiating neurons trajectory
+
+## Fit principale curve on the two lineages
 
 ```{r}
-Neurons.data <-  subset(Hem.data, idents = c("Cajal-Retzius_neurons", "Pallial_neurons"))
+Neurons.data <-  subset(KO,  subset = Lineage %in% c("Cajal-Retzius_neurons", "Pallial_neurons") & Cell.ident %in% c("Neuron_prob.2", "Neuron_prob.3"))
 
 DimPlot(Neurons.data ,
         reduction = "spring",
+        group.by = "Lineage",
         pt.size = 1,
         cols =  c("#cc391b","#026c9a")
         ) + NoAxes()
 ```
 
-## Fit principale curve on the two lineages
-
-### Cajal-Retzius cells
-
 ```{r}
-Trajectories.Hem <- Neurons.data@meta.data %>%
-                    select("Barcodes", "nUMI", "Spring_1", "Spring_2", "AP_signature1","BP_signature1", "EN_signature1", "LN_signature1", "Lineage") %>%
-                    filter(Lineage == "Cajal-Retzius_neurons")
-```
-
-```{r}
-fit <- principal_curve(as.matrix(Trajectories.Hem[,c("Spring_1", "Spring_2")]),
+fit <- principal_curve(as.matrix(Neurons.data@meta.data[,c("Spring_1", "Spring_2")]),
                        smoother='lowess',
                        trace=TRUE,
-                       f = .7,
+                       f = 1,
                        stretch=0)
+```
 
-#The principal curve smoothed
-Hem.pc.line <- as.data.frame(fit$s[order(fit$lambda),]) 
-
+```{r}
 #Pseudotime score
-Trajectories.Hem$PseudotimeScore <- fit$lambda/max(fit$lambda)
+PseudotimeScore <- fit$lambda/max(fit$lambda)
 
-```
-
-```{r}
-if (cor(Trajectories.Hem$PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', Trajectories.Hem$Barcodes]) > 0) {
-  Trajectories.Hem$PseudotimeScore <- -(Trajectories.Hem$PseudotimeScore - max(Trajectories.Hem$PseudotimeScore))
+if (cor(PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', ]) > 0) {
+  Neurons.data$PseudotimeScore <- -(PseudotimeScore - max(PseudotimeScore))
 }
-```
 
-### Pallial neurons
-
-```{r}
-Trajectories.Pallial <- Neurons.data@meta.data %>%
-                        select("Barcodes", "nUMI", "Spring_1", "Spring_2", "AP_signature1","BP_signature1", "EN_signature1", "LN_signature1", "Lineage") %>%
-                        filter(Lineage == "Pallial_neurons")
-                  
-```
-
-```{r}
-fit <- principal_curve(as.matrix(Trajectories.Pallial[,c("Spring_1", "Spring_2")]),
-                       smoother='lowess',
-                       trace=TRUE,
-                       f = .7,
-                       stretch=0)
-
-#The principal curve smoothed
-Pallial.pc.line <- as.data.frame(fit$s[order(fit$lambda),])
-
-#Pseudotime score
-Trajectories.Pallial$PseudotimeScore <- fit$lambda/max(fit$lambda)
-```
-
-```{r}
-if (cor(Trajectories.Pallial$PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', Trajectories.Pallial$Barcodes]) > 0) {
-  Trajectories.Pallial$PseudotimeScore <- -(Trajectories.Pallial$PseudotimeScore - max(Trajectories.Pallial$PseudotimeScore))
-}
-```
-
-## Combine the two trajectories' data
-
-```{r}
-Trajectories.neurons <- rbind(Trajectories.Pallial, Trajectories.Hem)
-```
-
-```{r}
 cols <- brewer.pal(n =11, name = "Spectral")
 
-ggplot(Trajectories.neurons, aes(Spring_1, Spring_2)) +
+ggplot(Neurons.data@meta.data, aes(Spring_1, Spring_2)) +
   geom_point(aes(color=PseudotimeScore), size=2, shape=16) + 
-  scale_color_gradientn(colours=rev(cols), name='Speudotime score') +
-  geom_line(data=Pallial.pc.line, color="#026c9a", size=0.77) +
-  geom_line(data=Hem.pc.line, color="#cc391b", size=0.77)
+  scale_color_gradientn(colours=rev(cols), name='Pseudotime score')
 ```
 
 ## Plot pan-neuronal genes along this axis
@@ -268,6 +249,10 @@ Neurons.data <- NormalizeData(Neurons.data, normalization.method = "LogNormalize
 ```
 
 ```{r fig.dim=c(9,10)}
+Trajectories.neurons <- Neurons.data@meta.data %>% select(Barcodes, nUMI, Spring_1, Spring_2,
+                                                          AP_signature1, BP_signature1, EN_signature1, LN_signature1,
+                                                          Lineage, PseudotimeScore)
+
 # Neurog2
 p1 <- FeaturePlot(object = Neurons.data,
             features = c("Neurog2"),
@@ -317,32 +302,16 @@ p6 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore, y= Mapt)) +
 
 p1 + p2 + p3 + p4 + p5 + p6 + patchwork::plot_layout(ncol = 2)
 ```
-
-## Shift Pseudotime in both lineage
-
-Since we observe the first 25% of both trajectories are occupied by few, likely progenitor cells, we shift this cell along the axis
-
-```{r}
-Pseudotime.intervals <- Trajectories.neurons%>%
-                          select(Lineage, PseudotimeScore) %>%
-                          mutate(Pseudotime.bins = cut(Trajectories.neurons$PseudotimeScore, seq(0, max(Trajectories.neurons$PseudotimeScore) + 0.05, 0.05), dig.lab = 2, right = FALSE)) %>%
-                          group_by(Lineage, Pseudotime.bins) %>%
-                          summarise(n=n())
-
-ggplot(Pseudotime.intervals, aes(x=Pseudotime.bins, y=n, fill=Lineage)) +
-        geom_bar(stat = "identity", width = 0.90) +
-        theme(axis.text.x = element_text(angle = 45, hjust=1))+
-        scale_fill_manual(values= c("#cc391b", "#026c9a"))
-```
+## Shift pseudotime score
 
 ```{r}
 score <- sapply(Trajectories.neurons$PseudotimeScore,
-                FUN = function(x) if (x <= 0.2) {x= 0.2} else { x=x })
+                FUN = function(x) if (x <= 0.15) {x= 0.15} else { x=x })
 
 Trajectories.neurons$PseudotimeScore.shifted <- (score - min(score)) / (max(score) - min(score))
 ```
 
-```{r fig.dim=c(9,10)}
+```{r}
 # Neurog2
 p1 <- FeaturePlot(object = Neurons.data ,
             features = c("Neurog2"),
@@ -388,7 +357,10 @@ p6 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= Mapt)) +
 p1 + p2 + p3 + p4 + p5 + p6 + patchwork::plot_layout(ncol = 2)
 ```
 
+
 ```{r}
+Trajectories.neurons$nUMI <- Neurons.data$nCount_RNA
+
 ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= nUMI/10000)) +
         geom_point(aes(color= Lineage), size=0.5) +
         scale_color_manual(values= c("#cc391b", "#026c9a")) +
