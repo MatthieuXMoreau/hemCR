@@ -857,7 +857,7 @@ pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-4
 ### Smooth commun genes along the two trajectories
 
 ```{r Smooth gene expression, message=FALSE, warning=FALSE, cache=TRUE}
-# Create a new pseudo-DV vector of 200 points
+# Create a new pseudo-DV vector of 300 points
 nPoints <- 300
 
 new_data = list()
@@ -959,11 +959,10 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
 ```
+
 We manually correct the reordering so genes are aligned from top left to bottom rigth
 
 ```{r fig.dim=c(9, 5)}
-gene.order <- gene.order[c(243:1,622:244)]
-
 pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                                 c(300:1,#Pal 
                                   301:600)], #CR
@@ -1094,7 +1093,7 @@ CR.gostres <- gost(query = list("Clust.1" = CR.Gene.dynamique %>% filter(Gene.Cl
                 numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
 
 write.table(apply(CR.gostres$result,2,as.character),
-            "CR_GO_res-by-waves.csv", sep = ";", quote = F, row.names = F)
+            "KO_CR_GO_res-by-waves.csv", sep = ";", quote = F, row.names = F)
 ```
 
 ```{r}
@@ -1102,53 +1101,6 @@ DNA_damage_GOterm <- CR.gostres$result[CR.gostres$result$term_id %in% c("GO:0008
                                                                                  "GO:0044773", "GO:0042771", "GO:0042770", "GO:2001021", "GO:1902229"),]
 
 DNA_damage_GOterm[,c(9,1,2,3,5,6,7,11)]
-```
-
-### Multiciliation and DNA damage score
-
-```{r}
-Hem.data <- readRDS("../QC.filtered.clustered.cells.RDS")
-```
-
-We took the 28 genes from (Lewis & Stracker 2021)[https://doi.org/10.1016/j.semcdb.2020.04.007]
-
-```{r}
-MCC.genes <- list(c("Trp73", "Gmnc", "Foxj1", "Myb", "Ccno", "Ccdc67", "Mcidas", "E2f4", "E2f5", "Ahr", "Trrap", "Cdc20b", "Ccdc78", "Rfx2", "Rfx3", "Foxn4", "Fank1", "Jazf1", "Ccna1", "Nek10", "Plk4", "Cep63", "Cep152", "Sass6", "Pcnt", "Pcm1", "Cetn2", "Tfdp1"))
-
-Hem.data <- AddModuleScore(Hem.data,
-                           features = MCC.genes,
-                           name = "MCC_score")
-
-p1 <- FeaturePlot(object = Hem.data,
-            features = c("MCC_score1"),
-            pt.size = 0.5,
-            cols = rev(brewer.pal(10,"Spectral")),
-            reduction = "spring",
-            order = T) & NoAxes()
-```
-
-```{r}
-DNA_damage_genes <- DNA_damage_GOterm %>%
-                    filter(query %in% c("Clust.2", "Clust.3", "Clust.4")) %>%
-                    filter(term_id == "GO:0033554") %>%
-                    pull(intersection) %>% strsplit("\\,") %>% unlist() %>% unique()
-```
-
-```{r}
-Hem.data <- AddModuleScore(Hem.data,
-                           features = DNA_damage_genes,
-                           name = "cellular_response_to_stress_score")
-
-p2 <- FeaturePlot(object = Hem.data,
-            features = c("cellular_response_to_stress_score1"),
-            pt.size = 0.5,
-            cols = rev(brewer.pal(10,"Spectral")),
-            reduction = "spring",
-            order = T) & NoAxes()
-```
-
-```{r}
-p1 + p2 + patchwork::plot_layout(ncol = 2)
 ```
 
 ### Go term on all CR genes
@@ -1163,7 +1115,7 @@ CR.gostres <- gost(query = as.character(CR.Gene.dynamique$Gene),
                 numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
 
 write.table(apply(CR.gostres$result,2,as.character),
-            "CR_GO_res.csv", sep = ";", quote = F, row.names = F)
+            "KOCR_GO_res.csv", sep = ";", quote = F, row.names = F)
 ```
 
 
@@ -1217,7 +1169,7 @@ CR_ChP_common.gostres <- gost(query = list("Clust.1" = CR_ChP_common_genes %>% f
                 numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
 
 write.table(apply(CR_ChP_common.gostres$result,2,as.character),
-            "CR_ChP_common_GO_res-by-waves.csv", sep = ";", quote = F, row.names = F)
+            "KO_CR_ChP_common_GO_res-by-waves.csv", sep = ";", quote = F, row.names = F)
 ```
 
 ```{r}
@@ -1237,7 +1189,7 @@ CR_ChP_common.gostres <- gost(query = as.character(CR_ChP_common_genes$Gene),
                 numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
 
 write.table(apply(CR_ChP_common.gostres$result,2,as.character),
-            "CR_ChP_common_GO_res_all.csv", sep = ";", quote = F, row.names = F)
+            "KO_CR_ChP_common_GO_res_all.csv", sep = ";", quote = F, row.names = F)
 ```
 
 
@@ -1300,8 +1252,6 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
 We manually correct the reordering so genes are aligned from top right to bottom left
 
 ```{r fig.dim=c(9, 5)}
-gene.order <- gene.order[c(199:1,352:200)]
-
 pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                                 c(300:1,#Pal
                                   301:600)], #CR
@@ -1318,8 +1268,6 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
 ```
-
-
 
 ```{r fig.dim=c(9, 5)}
 anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
@@ -1365,7 +1313,7 @@ Pal.gostres <- gost(query = as.character(Pal.Gene.dynamique$Gene),
                 numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
 
 write.table(apply(Pal.gostres$result, 2, as.character),
-            "Pal.gostres.csv", sep = ";", quote = F, row.names = F)
+            "KO_Pal.gostres.csv", sep = ";", quote = F, row.names = F)
 ```
 
 
