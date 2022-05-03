@@ -202,6 +202,7 @@ p2 <- ggplot(Cell.QC.Stat, aes(x=log10(nCount_RNA), y=log10(nFeature_RNA))) +
 
 ggMarginal(p2, type = "histogram", fill="lightgrey")
 ```
+
 ## Filter the Seurat object
 
 ```{r}
@@ -821,7 +822,7 @@ DimPlot(object = Raw.data,
         reduction = "spring",
         cols = c( "#4cabdc", "#7293c8", "grey40" ,"#3ca73f","grey80",
                   "#31b6bd", "#ebcb2e", "#9ec22f", "#a9961b",
-                 "#046c9a", "#4990c9","#e7823a", "#cc3a1b"),
+                 "#046c9a", "#cc3a1b","#4990c9","#e7823a"),
         pt.size = 0.5)  & NoAxes()
 ```
 
