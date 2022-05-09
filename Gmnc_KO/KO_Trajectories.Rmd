@@ -53,13 +53,36 @@ KO <- readRDS("./GmncKO.cells.RDS") %>% subset(idents = c(6:9), invert = T)
 ```
 
 ```{r}
-DimPlot(object = KO,
-        group.by = "Cell.ident",
-        reduction = "spring",
-        cols = c( "#4cabdc", "#7293c8", "#3ca73f",
-                  "#31b6bd","#a9961b", "#ebcb2e", "#9ec22f", 
-                  "#e7823a"),
-        pt.size = 0.5)  & NoAxes()
+p1 <- DimPlot(object = WT,
+              group.by = "Cell_ident",
+              reduction = "spring",
+              cols = c("#ebcb2e", #"CR"
+                       "#e7823a", #"ChP"
+                       "#4cabdc", # Chp_prog
+                       "#68b041", #"Dorso-Medial_pallium" 
+                       "#e46b6b", #"Hem" 
+                       "#e3c148", #"Medial_pallium"
+                       "#046c9a", # Pallial
+                       "#4990c9"#"Thalamic_eminence"
+              ),
+              pt.size = 0.5)  & NoAxes()
+
+
+p2 <- DimPlot(object = KO,
+              group.by = "Cell.ident",
+              reduction = "spring",
+              cols = c( "#4cabdc", # Chp_prog
+                        "#68b041", #"Dorso-Medial_pallium" 
+                        "#e46b6b", #"Hem" 
+                        "#e3c148", #"Medial_pallium"
+                        "#a9961b",
+                        "#ebcb2e",
+                        "#046c9a", # Pallial
+                        "#4990c9"#"Thalamic_eminence"
+              ),
+              pt.size = 0.5)  & NoAxes()
+
+p1 + p2
 ```
 
 # Expression of MCC and stress response in WT and KO
@@ -226,7 +249,7 @@ KO$Lineage <- sapply(KO$Cell.ident,
 DimPlot(KO,
         reduction = "spring",
         group.by = "Lineage",
-        pt.size = 1,
+        pt.size = 0.5,
         cols =  c("#cc391b","#969696","#026c9a")
         ) + NoAxes()
 ```
