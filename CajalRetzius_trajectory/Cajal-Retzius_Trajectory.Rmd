@@ -755,7 +755,6 @@ CR_curve_matrix <- CR_curve_matrix[CR.genes, ]
 ### Gene expression profiles along the trajectory
 
 ```{r}
-## Cluster gene by expression profiles
 Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(CR_curve_matrix),method = "pearson"))), k= 5)
 
 CR.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
@@ -767,6 +766,8 @@ CR.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering
 
 row.names(CR.Gene.dynamique) <- CR.Gene.dynamique$Gene
 CR.Gene.dynamique$Gene.Clusters <- paste0("Clust.", CR.Gene.dynamique$Gene.Clusters)
+
+write.table(CR.Gene.dynamique, "CR_dynamic_genes.csv", sep = ";", quote = F, row.names = F)
 ```
 
 ```{r CR gene heatmap, fig.dim=c(9, 5)}
@@ -1021,6 +1022,7 @@ ChP_dynamic_genes <- read.table("../ChoroidPlexus_trajectory/ChP.Gene.dynamique.
 
 ```{r}
 CR_ChP_common_genes <- CR.Gene.dynamique %>% filter(Gene %in% ChP_dynamic_genes$Gene)
+write.table(CR_ChP_common_genes, "CR-ChP_common_dynamic.csv", sep = ";", quote = F, row.names = F)
 ```
 
 ```{r}
