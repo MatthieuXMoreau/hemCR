@@ -56,16 +56,16 @@ rvel.cd <- gene.relative.velocity.estimates(Filtered.spliced,
                                             n.cores = parallel::detectCores() -2)
 ```
 
-```{r }
+```{r, fig.show='hide'}
 # Velocity on embedding
 Spring.velo <- show.velocity.on.embedding.cor(emb,
                                               rvel.cd,
                                               n=100,
                                               scale='sqrt',
-                                              arrow.scale=1,
+                                              arrow.scale=2,
                                               show.grid.flow=T,
-                                              min.grid.cell.mass=0.5,
-                                              grid.n=30,
+                                              min.grid.cell.mass=1,
+                                              grid.n=20,
                                               arrow.lwd=1,
                                               do.par=F,
                                               cell.border.alpha = 0,
