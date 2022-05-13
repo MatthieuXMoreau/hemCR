@@ -1080,6 +1080,24 @@ write.table(apply(CR_ChP_common.gostres$result,2,as.character),
             "CR_ChP_common_GO_res_all.csv", sep = ";", quote = F, row.names = F)
 ```
 
+### Medial CR transcription factor dynamic
+
+```{r}
+CR <- Neuro.trajectories@meta.data %>% filter(Lineage == "Cajal-Retzius_neurons") %>% select(Barcodes,Pseudotime)
+
+CR.genes <- cbind(t(Neuro.trajectories@assays$RNA@data[c("Gmnc","Trp73", "Lhx1", "Barhl2"),CR$Barcodes]), CR %>% select(Pseudotime))
+
+CR.genes  <- reshape2::melt(CR.genes, id = c("Pseudotime"))
+
+
+ggplot(CR.genes, aes(x= Pseudotime, y= value)) +
+#  geom_point(aes(color= variable), size=0.5) +
+  geom_smooth(method="loess", n= 50, aes(color= variable)) +
+  scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],wes_palette("FantasticFox1")[5])) +
+  ylim(0,NA)
+
+```
+
 
 ## Pallial neurons trajectory analysis
 
