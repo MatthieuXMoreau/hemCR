@@ -1114,6 +1114,8 @@ gbm_cds_KO <- detectGenes(gbm_cds_KO, min_expr = 0.1)
 rm(list = ls()[!ls() %in% c("Neuro.trajectories_WT","Neuro.trajectories_KO", "gbm_cds_WT", "gbm_cds_KO", "Gene.Trend", "Plot.Genes.trend")])
 gc()
 ```
+
+
 # Find DEG among all WT and KO trajectories
 
 ## WT DEG
@@ -1163,6 +1165,10 @@ WT_KO_DEG <- union(KO.genes.filtered$gene_short_name, WT.genes.filtered$gene_sho
 
 TFs <- read.table("TF.csv", sep = ";")[,1]
 Input.TFs <- intersect(rownames(gbm_cds_KO)[rownames(gbm_cds_KO) %in% TFs], rownames(gbm_cds_WT)[rownames(gbm_cds_WT) %in% TFs])
+
+CR_genes <- read.table("../CajalRetzius_trajectory/CR_dynamic_genes.csv", sep = ";", header = T)[,1]
+Input.TFs <- intersect(rownames(gbm_cds_KO)[rownames(gbm_cds_KO) %in% CR_genes], rownames(gbm_cds_WT)[rownames(gbm_cds_WT) %in% CR_genes])
+
 ```
 
 ```{r cache=TRUE}
@@ -1363,7 +1369,7 @@ p6 <- pheatmap::pheatmap(Smoothed.point.cor,
          show_colnames = F,
          show_rownames = F,
          color = colorRampPalette(brewer.pal(n = 10, name = "RdBu"))(100),
-         main = "CR WT vs CR WT euclidian dist",
+         main = "CP WT vs CP WT euclidian dist",
          legend = F,
          annotation_legend =F)
 ```
