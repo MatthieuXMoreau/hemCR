@@ -1,5 +1,5 @@
 ---
-title: "Cajal-Retzius cells Trajectory"
+title: "Cajal-Retzius cells trajectory in the Gmnc KO"
 author:
    - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -694,15 +694,9 @@ Plot.Genes.trend(Seurat.data= Neuro.trajectories,
 Plot.Genes.trend(Seurat.data= Neuro.trajectories,
                  group.by = "Lineage",
                  genes= c("Gmnc", "Mcidas",
+                          "Ccno", "Ccdc67",
                           "Foxj1", "Trp73",
                           "Lhx1", "Cdkn1a"))
-```
-
-```{r fig.dim=c(9,5)}
-Plot.Genes.trend(Seurat.data= Neuro.trajectories,
-                 group.by = "Lineage",
-                 genes= c("Mki67", "Top2a",
-                          "H2afx", "Cdkn1c"))
 ```
 
 # Use monocle2 to model gene expression along cycling axis
