@@ -826,6 +826,26 @@ DimPlot(object = Raw.data,
         pt.size = 0.5)  & NoAxes()
 ```
 
+# Change gene name annotation
+
+Reads were realigned using the same transcriptome annotation as the WT E11.5-E12.5 dataset. We re import the count matrix from the realignment.
+
+```{r}
+rm(list = ls()[!ls() %in% "Raw.data"])
+gc()
+```
+
+
+```{r class.output="scroll-100", cache=TRUE}
+Raw.data@assays[["RNA"]]@counts <- Read10X("../../RawData/Gmnc_KO/mm10_ref/outs/filtered_feature_bc_matrix/")[,Raw.data$Barcodes]
+Raw.data@assays[["RNA"]]@data <- Raw.data@assays[["RNA"]]@counts
+
+Raw.data <- SCTransform(Raw.data,
+                        method = "glmGamPoi",
+                        vars.to.regress = c("percent.mito"),
+                        verbose = T)
+```
+
 # Save the object
 
 ```{r Save RDS}
