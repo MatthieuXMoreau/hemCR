@@ -1,0 +1,686 @@
+---
+title: "Integration of WT and KO dataset"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
+```
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(princurve)
+library(Matrix)
+library(dplyr)
+library(RColorBrewer)
+library(fungible)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# Load both datasets
+
+```{r}
+WT <- readRDS("../QC.filtered.clustered.cells.RDS")
+KO <- readRDS("./GmncKO.cells.RDS")
+```
+
+```{r}
+#We exclude meninges and immune cells from the KO dataset since we had also excluded theme from the WT
+KO <-  subset(KO, idents = c(6:9), invert = T)
+WT <- subset(WT, subset = orig.ident == "Hem1")
+```
+
+
+```{r}
+p1 <- DimPlot(object = WT,
+        group.by = "Cell_ident",
+        reduction = "spring",
+        cols = c("#ebcb2e", #"CR"
+            "#e7823a", #"ChP"
+            "#4cabdc", # Chp_prog
+            "#68b041", #"Dorso-Medial_pallium" 
+            "#e46b6b", #"Hem" 
+            "#e3c148", #"Medial_pallium"
+            "#046c9a", # Pallial
+            "#4990c9"#"Thalamic_eminence"
+                     )
+        )  & NoAxes()
+
+p2 <- DimPlot(KO,
+        group.by = "Cell.ident",
+        reduction = "spring",
+        cols = c("#ebcb2e", #"CR"
+            "#e7823a", #"ChP"
+            "#4cabdc", # Chp_prog
+            "#68b041", #"Dorso-Medial_pallium" 
+            "#e46b6b", #"Hem" 
+            "#e3c148", #"Medial_pallium"
+            "#046c9a", # Pallial
+            "#4990c9"#"Thalamic_eminence"
+                     )
+        )  & NoAxes()
+
+p1 + p2
+```
+
+```{r}
+WT <- NormalizeData(WT, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+KO <- NormalizeData(KO, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+```
+
+```{r cache=TRUE}
+WT <- FindVariableFeatures(WT, selection.method = "vst", nfeatures = 3000)
+KO <- FindVariableFeatures(KO, selection.method = "vst", nfeatures = 3000)
+```
+
+# Integration
+
+```{r}
+WT.KO <- list(WT = WT, KO = KO)
+
+rm(list= ls()[!ls() %in% c("WT.KO")])
+gc()
+```
+```{r cache=TRUE}
+features <- SelectIntegrationFeatures(object.list = WT.KO)
+
+WT.KO.integrated <- FindIntegrationAnchors(object.list = WT.KO,
+                                           anchor.features = features,
+                                           dims = 1:30)
+```
+
+
+```{r cache=TRUE}
+WT.KO.integrated <- IntegrateData(anchorset = WT.KO.integrated,
+                                  dims = 1:20)
+
+DefaultAssay(WT.KO.integrated) <- "integrated"
+
+WT.KO.integrated <- ScaleData(WT.KO.integrated, verbose = FALSE)
+```
+
+# Generate Spring dimensionality reduction
+
+## Export count matrix
+
+```{r}
+dir.create("SpringCoordinates_integrated")
+```
+
+```{r}
+#Export raw expression matrix and gene list to regenerate a spring plot
+exprData <- Matrix(as.matrix(WT.KO.integrated@assays$RNA@counts), sparse = TRUE)
+writeMM(exprData, "./SpringCoordinates_integrated/ExprData.mtx")
+```
+
+```{r}
+# Export gene list
+Genelist <- row.names(WT.KO.integrated@assays$RNA@counts)
+write.table(Genelist, "./SpringCoordinates_integrated/Genelist.csv", sep="\t", col.names = F, row.names = F, quote = F)
+```
+
+```{r}
+#Export metadata
+WT_Cell_ident <- c("WT_Cell_ident", WT.KO.integrated$Cell_ident)
+WT_Cell_ident <- paste(WT_Cell_ident, sep=",", collapse=",")
+
+KO_Cell_ident <- c("KO_Cell_ident", as.character(WT.KO.integrated$Cell.ident))
+KO_Cell_ident <- paste(KO_Cell_ident, sep=",", collapse=",")
+
+Genotype <- c("Genotype", WT.KO.integrated$orig.ident)
+Genotype <- paste(Genotype, sep=",", collapse=",")
+
+Cellgrouping <- rbind(WT_Cell_ident, KO_Cell_ident, Genotype)
+write.table(Cellgrouping, "./SpringCoordinates_integrated/Cellgrouping.csv", quote =F, row.names = F, col.names = F)
+```
+
+
+## Import coordinates
+
+```{r}
+spring.coor <- read.table("SpringCoordinates_integrated/coordinates.txt", sep = ",", header = F, row.names = 1)
+colnames(spring.coor) <- c("Spring_1", "Spring_2")
+```
+
+```{r}
+Spring.Sym <- function(x){
+  x = abs(max(spring.coor$Spring_2)-x)
+ }
+
+spring.coor$Spring_2 <- sapply(spring.coor$Spring_2, function(x) Spring.Sym(x))
+```
+
+```{r}
+WT.KO.integrated$Integrated_Spring_1 <- spring.coor$Spring_1
+WT.KO.integrated$Integrated_Spring_2 <- spring.coor$Spring_2
+```
+
+
+```{r}
+spring <- as.matrix(WT.KO.integrated@meta.data %>% select("Integrated_Spring_1", "Integrated_Spring_2"))
+  
+WT.KO.integrated[["integrated_spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_", assay = DefaultAssay(WT.KO.integrated))
+```
+
+
+# Annotate Cajal-Retzius, Pallial neurons and Choroid plexus lineages
+
+## WT 
+
+```{r}
+WT.KO$WT$Lineage <- sapply(WT.KO$WT$Cell_ident,
+                              FUN = function(x) {
+                                if (x %in% c("Cajal-Retzius_neurons", "Hem")) {
+                                  x = "Cajal-Retzius_neurons"
+                                } else if (x %in% c("Pallial_neurons", "Medial_pallium")) {
+                                  x = "Pallial_neurons"
+                                } else if(x %in% c("ChP", "ChP_progenitors")) {
+                                   x =  "Choroid_Plexus"
+                                } else {
+                                  x = "other"
+                                  }
+                              })
+```
+
+```{r}
+DimPlot(WT.KO$WT,
+        reduction = "spring",
+        group.by = "Lineage",
+        pt.size = 1,
+        cols =   c("#cc391b","#e7823a","#969696","#026c9a")
+        ) + NoAxes()
+```
+
+## KO
+
+```{r}
+WT.KO$KO$Lineage <- sapply(WT.KO$KO$Cell.ident,
+                              FUN = function(x) {
+                                if (x %in% c("Neuron_prob.2", "Hem")) {
+                                  x = "Cajal-Retzius_neurons"
+                                } else if (x %in% c("Neuron_prob.3", "Medial_pallium")) {
+                                  x = "Pallial_neurons"
+                                } else if (x %in% c("ChP", "ChP_progenitors")) {
+                                  x = "Choroid_Plexus"
+                                } else {
+                                  x = "other"
+                                  }
+                              })
+```
+
+```{r}
+DimPlot(WT.KO$KO,
+        reduction = "spring",
+        group.by = "Lineage",
+        pt.size = 1,
+        cols =   c("#cc391b","#e7823a","#969696","#026c9a")
+        ) + NoAxes()
+```
+
+```{r}
+WT.KO.integrated$Lineage <- c(WT.KO$WT$Lineage, WT.KO$KO$Lineage)
+```
+
+```{r}
+DimPlot(WT.KO.integrated,
+        reduction = "integrated_spring",
+        group.by = "Lineage",
+        pt.size = 1,
+        cols =   c("#cc391b","#e7823a","#969696","#026c9a")
+        ) + NoAxes()
+```
+
+# Compute differentiation states scores
+
+```{r}
+WT.KO.integrated <- NormalizeData(WT.KO.integrated,
+                                  normalization.method = "LogNormalize",
+                                  scale.factor = 10000,
+                                  assay = "RNA")
+
+WT.KO.integrated <- ScaleData(WT.KO.integrated,
+                              assay = "RNA",
+                              verbose = FALSE)
+```
+
+AP
+
+```{r}
+APgenes <- c("Rgcc", "Sparc", "Hes5","Hes1", "Slc1a3",
+             "Ddah1", "Ldha", "Hmga2","Sfrp1", "Id4",
+             "Creb5", "Ptn", "Lpar1", "Rcn1","Zfp36l1",
+             "Sox9", "Sox2", "Nr2e1", "Ttyh1", "Trip6")
+
+WT.KO.integrated <- AddModuleScore(WT.KO.integrated,
+                     features = list(APgenes),
+                     name = "AP_signature",
+                     assay = "RNA")
+```
+
+BP
+
+```{r}
+BPgenes <- c("Eomes", "Igsf8", "Insm1", "Elavl2", "Elavl4",
+             "Hes6","Gadd45g", "Neurog2", "Btg2", "Neurog1")
+
+WT.KO.integrated <- AddModuleScore(WT.KO.integrated,
+                     features = list(BPgenes),
+                     name = "BP_signature",
+                     assay = "RNA")
+```
+
+EN
+
+```{r}
+ENgenes <- c("Mfap4", "Nhlh2", "Nhlh1", "Ppp1r14a", "Nav1",
+             "Neurod1", "Sorl1", "Svip", "Cxcl12", "Tenm4",
+             "Dll3", "Rgmb", "Cntn2", "Vat1")
+
+WT.KO.integrated <- AddModuleScore(WT.KO.integrated,
+                     features = list(ENgenes),
+                     name = "EN_signature",
+                     assay = "RNA")
+```
+
+LN
+
+```{r}
+LNgenes <- c("Snhg11", "Pcsk1n", "Mapt", "Ina", "Stmn4",
+             "Gap43", "Tubb2a", "Ly6h","Ptprd", "Mef2c")
+
+WT.KO.integrated <- AddModuleScore(WT.KO.integrated,
+                     features = list(LNgenes),
+                     name = "LN_signature",
+                     assay = "RNA")
+```
+
+```{r}
+WT.KO.integrated$AP_signature <- WT.KO.integrated$AP_signature1
+WT.KO.integrated$BP_signature <- WT.KO.integrated$BP_signature1
+WT.KO.integrated$EN_signature <- WT.KO.integrated$EN_signature1
+WT.KO.integrated$LN_signature <- WT.KO.integrated$LN_signature1
+```
+
+
+```{r}
+FeaturePlot(object = WT.KO.integrated,
+            features = c("AP_signature", "BP_signature",
+                              "EN_signature", "LN_signature"),
+            pt.size = 0.75,
+            cols = rev(brewer.pal(10,"Spectral")),
+            reduction = "integrated_spring",
+            order = T) & NoAxes() & NoLegend()
+```
+
+# Save the object
+
+```{r}
+WT.KO.integrated@meta.data <- WT.KO.integrated@meta.data  %>% dplyr::mutate(Cell.ident.WT = tidyr::replace_na(Cell_ident, "KO"))
+WT.KO.integrated@meta.data <- WT.KO.integrated@meta.data  %>% dplyr::mutate(Cell.ident.KO = tidyr::replace_na(Cell.ident, "WT"))
+
+WT.KO.integrated@meta.data <- WT.KO.integrated@meta.data[,c("orig.ident", "nCount_RNA", "nFeature_RNA",
+                                                            "Barcodes", "percent.mito", "percent.ribo",
+                                                            "Spring_1", "Spring_2", "Cell.ident.WT", "Cell.ident.KO",
+                                                            "Integrated_Spring_1", "Integrated_Spring_2",
+                                                            "Lineage", "AP_signature", "BP_signature",
+                                                            "EN_signature", "LN_signature")]
+
+
+```
+
+
+```{r}
+p1 <- DimPlot(object = WT.KO.integrated,
+        group.by = "Cell.ident.WT",
+        pt.size = 0.7,
+        reduction = "integrated_spring",
+        split.by = "orig.ident",
+        cols = c("#ebcb2e", #"CR"
+            "#e7823a", #"ChP"
+            "#4cabdc", # Chp_prog
+            "#68b041", #"Dorso-Medial_pallium" 
+            "#e46b6b", #"Hem"
+            "grey40",
+            "#e3c148", #"Medial_pallium"
+            "#046c9a", # Pallial
+            "#4990c9"#"Thalamic_eminence"
+            )
+        )  & NoAxes()
+
+p2 <- DimPlot(object = WT.KO.integrated,
+        group.by = "Cell.ident.KO",
+        pt.size = 0.7,
+        reduction = "integrated_spring",
+        split.by = "orig.ident",
+        cols =  c( "#4cabdc", # Chp_prog
+                   "#68b041", #"Dorso-Medial_pallium" 
+                   "#e46b6b", #"Hem" 
+                   "#e3c148", #"Medial_pallium"
+                   "#a9961b",
+                   "#ebcb2e",
+                   "#046c9a", # Pallial
+                   "#4990c9",#"Thalamic_eminence"
+            "grey40")
+        )  & NoAxes()
+
+p1 / p2
+```
+
+```{r Save RDS}
+saveRDS(WT.KO.integrated, "./WT_KO.integrated.RDS")
+```
+
+```{r}
+rm(list = ls()[!ls() %in% c("WT.KO.integrated")])
+gc()
+```
+
+# Compute distance between trajectories
+
+```{r}
+WT_KO_trajectories <- subset(WT.KO.integrated, subset = Lineage %in% c("Cajal-Retzius_neurons", "Pallial_neurons"))
+```
+
+```{r}
+DimPlot(WT_KO_trajectories,
+        reduction = "integrated_spring",
+        group.by = "Lineage",
+        split.by = "orig.ident",
+        pt.size = 1,
+        cols = c("#cc391b", "#026c9a")
+        ) + NoAxes()
+```
+## Pseudotime WT CR bins
+
+```{r}
+nbreaks = 7
+```
+
+
+```{r}
+WT.CR <- WT_KO_trajectories@meta.data %>%
+                    select("orig.ident", "Barcodes", "Cell.ident.WT","Spring_1", "Spring_2", "Lineage") %>%
+                    filter(orig.ident == "Hem1" & Cell.ident.WT == "Cajal-Retzius_neurons")
+```
+
+
+```{r}
+fit <- principal_curve(as.matrix(WT.CR[,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=F,
+                       f = 0.7,
+                       stretch=0)
+
+WT.CR$Pseudotime <- fit$lambda/max(fit$lambda)
+
+if (cor(WT.CR$Pseudotime, WT_KO_trajectories@assays$RNA@data['Hmga2', WT.CR$Barcodes]) > 0) {
+  WT.CR$Pseudotime <- -(WT.CR$Pseudotime - max(WT.CR$Pseudotime))
+}
+
+WT.CR$Pseudotime.bins<- cut(WT.CR$Pseudotime, breaks = nbreaks , labels = 1:nbreaks)
+```
+
+## Pseudotime WT Pallial bins
+
+```{r}
+WT.Pal <- WT_KO_trajectories@meta.data %>%
+                    select("orig.ident", "Barcodes", "Cell.ident.WT","Spring_1", "Spring_2", "Lineage") %>%
+                    filter(orig.ident == "Hem1" & Cell.ident.WT == "Pallial_neurons")
+```
+
+
+```{r}
+fit <- principal_curve(as.matrix(WT.Pal [,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=F,
+                       f = 0.7,
+                       stretch=0)
+
+WT.Pal$Pseudotime <- fit$lambda/max(fit$lambda)
+
+if (cor(WT.Pal$Pseudotime, WT_KO_trajectories@assays$RNA@data['Hmga2', WT.Pal$Barcodes]) > 0) {
+  WT.Pal$Pseudotime <- -(WT.Pal$Pseudotime - max(WT.Pal$Pseudotime))
+}
+
+WT.Pal$Pseudotime.bins<- cut(WT.Pal$Pseudotime, breaks = nbreaks , labels = 1:nbreaks)
+```
+
+## Pseudotime KO CR bins
+
+```{r}
+KO.CR <- WT_KO_trajectories@meta.data %>%
+            select("orig.ident", "Barcodes", "Cell.ident.KO","Spring_1", "Spring_2", "Lineage") %>%
+            filter(orig.ident == "Gmnc_KO" & Cell.ident.KO == "Neuron_prob.2")
+```
+
+
+```{r}
+fit <- principal_curve(as.matrix(KO.CR[,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=F,
+                       f = 0.7,
+                       stretch=0)
+
+KO.CR$Pseudotime <- fit$lambda/max(fit$lambda)
+
+if (cor(KO.CR$Pseudotime, WT_KO_trajectories@assays$RNA@data['Hmga2', KO.CR$Barcodes]) > 0) {
+  KO.CR$Pseudotime <- -(KO.CR$Pseudotime - max(KO.CR$Pseudotime))
+}
+
+KO.CR$Pseudotime.bins<- cut(KO.CR$Pseudotime, breaks = nbreaks , labels = 1:nbreaks)
+```
+
+## Pseudotime KO Pallial bins
+
+```{r}
+KO.Pal <- WT_KO_trajectories@meta.data %>%
+  select("orig.ident", "Barcodes", "Cell.ident.KO","Spring_1", "Spring_2", "Lineage") %>%
+  filter(orig.ident == "Gmnc_KO" & Cell.ident.KO == "Neuron_prob.3")
+```
+
+
+```{r}
+fit <- principal_curve(as.matrix(KO.Pal [,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=F,
+                       f = 0.7,
+                       stretch=0)
+
+KO.Pal$Pseudotime <- fit$lambda/max(fit$lambda)
+
+if (cor(KO.Pal$Pseudotime, WT_KO_trajectories@assays$RNA@data['Hmga2', KO.Pal$Barcodes]) > 0) {
+  KO.Pal$Pseudotime <- -(KO.Pal$Pseudotime - max(KO.Pal$Pseudotime))
+}
+
+KO.Pal$Pseudotime.bins<- cut(KO.Pal$Pseudotime, breaks = nbreaks , labels = 1:nbreaks)
+```
+
+## Combine pseudotime
+
+```{r}
+p1 <- ggplot(WT.CR, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime), size=2, shape=16) + 
+  scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)), name='Speudotime score')
+
+p2 <- ggplot(WT.Pal, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime), size=2, shape=16) + 
+  scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)), name='Speudotime score')
+
+p3 <- ggplot(KO.CR, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime), size=2, shape=16) + 
+  scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)), name='Speudotime score')
+
+p4 <- ggplot(KO.Pal, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime), size=2, shape=16) + 
+  scale_color_gradientn(colours=rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)), name='Speudotime score')
+
+p1 + p2 + p3 + p4
+```
+```{r}
+p1 <- ggplot(WT.CR, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime.bins), size=2, shape=16)
+
+p2 <- ggplot(WT.Pal, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime.bins), size=2, shape=16)
+
+p3 <- ggplot(KO.CR, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime.bins), size=2, shape=16)
+
+p4 <- ggplot(KO.Pal, aes(Spring_1, Spring_2)) +
+  geom_point(aes(color=Pseudotime.bins), size=2, shape=16)
+
+p1 + p2 + p3 + p4
+```
+
+```{r}
+traj.data <- rbind(WT.CR[,c("Barcodes", "Pseudotime.bins")], WT.Pal[,c("Barcodes", "Pseudotime.bins")],
+                   KO.CR[,c("Barcodes", "Pseudotime.bins")], KO.Pal[,c("Barcodes", "Pseudotime.bins")])
+
+rownames(traj.data) <- traj.data$Barcodes
+
+WT_KO_trajectories$Pseudotime.bins <- sapply(WT_KO_trajectories$Barcodes,
+                                              FUN = function(x) {
+                                                if (x %in% traj.data$Barcodes) {
+                                                  x = traj.data[x,"Pseudotime.bins"]
+                                               } else {
+                                                  x = 1
+                                                  }
+                                              })
+```
+
+```{r}
+DimPlot(WT_KO_trajectories,
+        reduction = "integrated_spring",
+        group.by = "Pseudotime.bins",
+        pt.size = 1,
+        #cols = c("#cc391b", "#026c9a")
+        ) + NoAxes()
+```
+
+# Cosine distance between average expression
+
+## average scaled expression by lineage and by genotype
+
+```{r}
+# WT Cajal-Retzius
+WT_CR <- subset(WT_KO_trajectories, subset = orig.ident == "Hem1" & Lineage == "Cajal-Retzius_neurons")
+  
+WT_CR.averages <- AverageExpression(WT_CR,
+                                    group.by = "Pseudotime.bins",
+                                    assays = "integrated",
+                                    slot = "scale.data")
+
+# KO Cajal-Retzius
+KO_CR <- subset(WT_KO_trajectories, subset = orig.ident == "Gmnc_KO" & Lineage == "Cajal-Retzius_neurons")
+
+KO_CR.averages <- AverageExpression(KO_CR,
+                                    group.by = "Pseudotime.bins",
+                                    assays = "integrated",
+                                    slot = "scale.data")
+  
+# WT Pallial neurons
+WT_Pal <- subset(WT_KO_trajectories, subset = orig.ident == "Hem1" & Lineage == "Pallial_neurons")
+
+WT_Pal.averages <- AverageExpression(WT_Pal,
+                                    group.by = "Pseudotime.bins",
+                                    assays = "integrated",
+                                    slot = "scale.data")
+  
+# KO Pallial neurons  
+KO_Pal <- subset(WT_KO_trajectories, subset = orig.ident == "Gmnc_KO" & Lineage == "Pallial_neurons")
+
+KO_Pal.averages <- AverageExpression(KO_Pal,
+                                    group.by = "Pseudotime.bins",
+                                    assays = "integrated",
+                                    slot = "scale.data")
+```
+
+## Distance to WT pallial neurons
+
+```{r}
+# WT CR
+Smoothed.point.cor <- pdist::pdist(X= t(WT_CR.averages$integrated),
+                                   Y= t(WT_Pal.averages$integrated))
+
+WT.CR_WT.Pal.dist <- diag(as.matrix(Smoothed.point.cor))
+
+
+Smoothed.point.cor <- pdist::pdist(X= t(WT_CR.averages$integrated),
+                                   Y= t(KO_Pal.averages$integrated))
+
+WT.CR_KO.Pal.dist <- diag(as.matrix(Smoothed.point.cor))
+
+Smoothed.point.cor <- pdist::pdist(X= t(WT_CR.averages$integrated),
+                                   Y= t(KO_CR.averages$integrated))
+
+WT.CR_KO.CR.dist <- diag(as.matrix(Smoothed.point.cor))
+
+Smoothed.point.cor <- pdist::pdist(X= t(KO_CR.averages$integrated),
+                                   Y= t(WT_Pal.averages$integrated))
+
+KO.CR_WT.Pal.dist <- diag(as.matrix(Smoothed.point.cor))
+
+Smoothed.point.cor <- pdist::pdist(X= t(KO_CR.averages$integrated),
+                                   Y= t(KO_Pal.averages$integrated))
+
+KO.CR_KO.Pal.dist <- diag(as.matrix(Smoothed.point.cor))
+
+Smoothed.point.cor <- pdist::pdist(X= t(WT_Pal.averages$integrated),
+                                   Y= t(KO_Pal.averages$integrated))
+
+WT.Pal_KO.Pal.dist <- diag(as.matrix(Smoothed.point.cor))
+```
+
+
+
+```{r}
+data <- data.frame(Distance = c(WT.CR_WT.Pal.dist, WT.CR_KO.Pal.dist, WT.CR_KO.CR.dist,
+                                KO.CR_WT.Pal.dist, KO.CR_KO.Pal.dist, WT.Pal_KO.Pal.dist),
+                   Trajectory = rep(c("WT.CR_WT.Pal.dist", "WT.CR_KO.Pal.dist", "WT.CR_KO.CR.dist",
+                                      "KO.CR_WT.Pal.dist", "KO.CR_KO.Pal.dist", "WT.Pal_KO.Pal.dist"), each=nbreaks),
+                   Pseudotime.bin = factor(rep(paste0("Bin_",1:nbreaks), 3),levels = paste0("Bin_",1:nbreaks)))
+
+p1 <- DimPlot(WT_KO_trajectories,
+        reduction = "integrated_spring",
+        group.by = "Pseudotime.bins",
+        pt.size = 1,
+        #cols = c("#cc391b", "#026c9a")
+        ) + NoAxes()
+
+p2 <- ggplot(data, aes(x= Pseudotime.bin, y= Distance, color= Trajectory, group = Trajectory)) +
+              geom_line() +
+              geom_point()
+
+p1 + p2
+```
+
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
