@@ -687,8 +687,14 @@ KO_Pal.averages <- AverageExpression(KO_Pal,
 ## Compute correlation across conditions
 
 ```{r}
-ggplot(WT_CR@meta.data, aes(Spring_1, Spring_2, color= Pseudotime.bins)) + geom_point()
+p1 <- ggplot(WT_CR@meta.data, aes(Spring_1, Spring_2, color= Pseudotime.bins)) + geom_point()
+p2 <- ggplot(KO_CR@meta.data, aes(Spring_1, Spring_2, color= Pseudotime.bins)) + geom_point()
+p3 <- ggplot(WT_Pal@meta.data, aes(Spring_1, Spring_2, color= Pseudotime.bins)) + geom_point()
+p4 <- ggplot(KO_Pal@meta.data, aes(Spring_1, Spring_2, color= Pseudotime.bins)) + geom_point()
+
+(p1 + p2) / (p3 + p4)
 ```
+
 ### Distance to KO pallial neurons
 
 ```{r}
@@ -718,9 +724,10 @@ data <- data.frame(Distance = c(WT_CR.dist, KO_CR.dist, WT_Pal.dist),
 
 ggplot(data, aes(x= Pseudotime.bin, y= Distance, color= Trajectory, group = Trajectory)) +
   geom_line() +
-  geom_point() + ggtitle("Distance to KO pallial neurons")
+  geom_point() + ggtitle("Euclidian distance to KO pallial neurons")
 
 ```
+
 ### Distance to WT pallial neurons
 
 ```{r}
@@ -761,20 +768,20 @@ ggplot(data, aes(x= Pseudotime.bin, y= Distance, color= Trajectory, group = Traj
 Smoothed.point.cor <- cosMat(WT_CR.averages$RNA,
                              KO_Pal.averages$RNA)
 
-WT_CR.dist <- diag(Smoothed.point.cor$cosine)
+WT_CR.dist <- 1 - diag(Smoothed.point.cor$cosine)
 
 #
 Smoothed.point.cor <- cosMat(KO_CR.averages$RNA,
                              KO_Pal.averages$RNA)
 
 
-KO_CR.dist <- diag(Smoothed.point.cor$cosine)
+KO_CR.dist <- 1 - diag(Smoothed.point.cor$cosine)
 
 #
 Smoothed.point.cor <- cosMat(WT_Pal.averages$RNA,
                              KO_Pal.averages$RNA)
 
-KO_Pal.dist <- diag(Smoothed.point.cor$cosine)
+KO_Pal.dist <- 1- diag(Smoothed.point.cor$cosine)
 ```
 
 ```{r}
@@ -784,7 +791,40 @@ data <- data.frame(Distance = c(WT_CR.dist, KO_CR.dist, KO_Pal.dist),
 
 ggplot(data, aes(x= Pseudotime.bin, y= Distance, color= Trajectory, group = Trajectory)) +
   geom_line() +
-  geom_point() + ggtitle("Distance to KO pallial neurons")
+  geom_point() + ggtitle("Cosine distance to KO pallial neurons")
+
+```
+
+# Cosine to WT pallial neurons
+
+```{r}
+Smoothed.point.cor <- cosMat(WT_CR.averages$RNA,
+                             WT_Pal.averages$RNA)
+
+WT_CR.dist <- 1 - diag(Smoothed.point.cor$cosine)
+
+#
+Smoothed.point.cor <- cosMat(KO_CR.averages$RNA,
+                             WT_Pal.averages$RNA)
+
+
+KO_CR.dist <- 1 - diag(Smoothed.point.cor$cosine)
+
+#
+Smoothed.point.cor <- cosMat(KO_Pal.averages$RNA,
+                             WT_Pal.averages$RNA)
+
+KO_Pal.dist <- 1- diag(Smoothed.point.cor$cosine)
+```
+
+```{r}
+data <- data.frame(Distance = c(WT_CR.dist, KO_CR.dist, KO_Pal.dist),
+                   Trajectory = rep(c("WT_CR", "KO_CR", "KO_Pal"), each=nbreaks),
+                   Pseudotime.bin = factor(rep(paste0("Bin_",1:nbreaks), 3),levels = paste0("Bin_",1:nbreaks)))
+
+ggplot(data, aes(x= Pseudotime.bin, y= Distance, color= Trajectory, group = Trajectory)) +
+  geom_line() +
+  geom_point() + ggtitle("Cosine distance to WT pallial neurons")
 
 ```
 
