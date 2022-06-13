@@ -45,46 +45,48 @@ library(wesanderson)
 theme_set(theme_classic())
 ```
 
+# Load integrated datasets
+
+```{r}
+WT.KO.integrated <- readRDS("WT_KO.integrated.RDS")
+```
+
+
+```{r}
+DimPlot(WT.KO.integrated,
+        reduction = "integrated_spring",
+        group.by = "Lineage",
+        pt.size = 1,
+        cols =   c("#cc391b","#e7823a","#969696","#026c9a")
+        ) + NoAxes()
+```
+
 # Pseudotime in the WT
 
-```{r}
-WT <- readRDS("../QC.filtered.clustered.cells.RDS")
-```
-
 ## Extract CR and CP neurons 
-```{r}
-WT$Lineage <- sapply(WT$Cell_ident,
-                              FUN = function(x) {
-                                if (x %in% c("Cajal-Retzius_neurons", "Hem")) {
-                                  x = "Cajal-Retzius_neurons"
-                                } else if (x %in% c("Pallial_neurons", "Medial_pallium")) {
-                                  x = "Pallial_neurons"
-                                } else if(x %in% c("ChP", "ChP_progenitors")) {
-                                   x =  "Choroid_Plexus"
-                                } else {
-                                  x = "other"
-                                  }
-                              })
-```
 
 ```{r}
-Neurons.data <-  subset(WT, idents = c("Cajal-Retzius_neurons", "Pallial_neurons"))
+Neurons.data <-  subset(WT.KO.integrated,
+                        subset = Lineage %in% c("Cajal-Retzius_neurons", "Pallial_neurons") & orig.ident == "Hem1" & Cell.ident.WT %in% c("Cajal-Retzius_neurons", "Pallial_neurons"))
 
 DimPlot(Neurons.data,
-        reduction = "spring",
+        group.by = "Lineage",
+        reduction = "integrated_spring",
         pt.size = 1,
         cols =  c("#cc391b","#026c9a")
         ) + NoAxes()
 
-rm(WT)
+rm(WT.KO.integrated)
+gc()
 ```
+
 ## Fit principale curve on the two lineages
 
 ### Cajal-Retzius cells
 
 ```{r}
 Trajectories.Hem <- Neurons.data@meta.data %>%
-                    select("Barcodes", "nUMI", "Spring_1", "Spring_2", "AP_signature1","BP_signature1", "EN_signature1", "LN_signature1", "Lineage") %>%
+                    select("Barcodes", "nCount_RNA", "Spring_1", "Spring_2", "AP_signature","BP_signature", "EN_signature", "LN_signature", "Lineage") %>%
                     filter(Lineage == "Cajal-Retzius_neurons")
 ```
 
@@ -104,7 +106,7 @@ Trajectories.Hem$PseudotimeScore <- fit$lambda/max(fit$lambda)
 ```
 
 ```{r}
-if (cor(Trajectories.Hem$PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', Trajectories.Hem$Barcodes]) > 0) {
+if (cor(Trajectories.Hem$PseudotimeScore, Neurons.data@assays$RNA@data['Hmga2', Trajectories.Hem$Barcodes]) > 0) {
   Trajectories.Hem$PseudotimeScore <- -(Trajectories.Hem$PseudotimeScore - max(Trajectories.Hem$PseudotimeScore))
 }
 ```
@@ -113,7 +115,7 @@ if (cor(Trajectories.Hem$PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', 
 
 ```{r}
 Trajectories.Pallial <- Neurons.data@meta.data %>%
-                        select("Barcodes", "nUMI", "Spring_1", "Spring_2", "AP_signature1","BP_signature1", "EN_signature1", "LN_signature1", "Lineage") %>%
+                        select("Barcodes", "nCount_RNA", "Spring_1", "Spring_2", "AP_signature","BP_signature", "EN_signature", "LN_signature", "Lineage") %>%
                         filter(Lineage == "Pallial_neurons")
                   
 ```
@@ -133,7 +135,7 @@ Trajectories.Pallial$PseudotimeScore <- fit$lambda/max(fit$lambda)
 ```
 
 ```{r}
-if (cor(Trajectories.Pallial$PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', Trajectories.Pallial$Barcodes]) > 0) {
+if (cor(Trajectories.Pallial$PseudotimeScore, Neurons.data@assays$RNA@data['Hmga2', Trajectories.Pallial$Barcodes]) > 0) {
   Trajectories.Pallial$PseudotimeScore <- -(Trajectories.Pallial$PseudotimeScore - max(Trajectories.Pallial$PseudotimeScore))
 }
 ```
@@ -152,63 +154,6 @@ ggplot(Trajectories.neurons, aes(Spring_1, Spring_2)) +
   scale_color_gradientn(colours=rev(cols), name='Speudotime score') +
   geom_line(data=Pallial.pc.line, color="#026c9a", size=0.77) +
   geom_line(data=Hem.pc.line, color="#cc391b", size=0.77)
-```
-
-### Plot pan-neuronal genes along this axis
-
-```{r}
-Neurons.data <- NormalizeData(Neurons.data, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
-```
-
-```{r fig.dim=c(9,10)}
-# Neurog2
-p1 <- FeaturePlot(object = Neurons.data,
-            features = c("Neurog2"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-Trajectories.neurons$Neurog2 <- Neurons.data@assays$RNA@data["Neurog2", Trajectories.neurons$Barcodes]
-
-p2 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore, y= Neurog2)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-# Tbr1 
-p3 <- FeaturePlot(object = Neurons.data ,
-            features = c("Tbr1"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-Trajectories.neurons$Tbr1 <- Neurons.data@assays$RNA@data["Tbr1", Trajectories.neurons$Barcodes]
-
-p4 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore, y= Tbr1)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-# Mapt 
-p5 <- FeaturePlot(object = Neurons.data ,
-            features = c("Mapt"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-Trajectories.neurons$Mapt <- Neurons.data@assays$RNA@data["Mapt", Trajectories.neurons$Barcodes]
-
-p6 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore, y= Mapt)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-p1 + p2 + p3 + p4 + p5 + p6 + patchwork::plot_layout(ncol = 2)
 ```
 
 ### Shift Pseudotime in both lineage
@@ -235,54 +180,8 @@ score <- sapply(Trajectories.neurons$PseudotimeScore,
 Trajectories.neurons$PseudotimeScore.shifted <- (score - min(score)) / (max(score) - min(score))
 ```
 
-```{r fig.dim=c(9,10)}
-# Neurog2
-p1 <- FeaturePlot(object = Neurons.data ,
-            features = c("Neurog2"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-p2 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= Neurog2)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-# Tbr1 
-p3 <- FeaturePlot(object = Neurons.data ,
-            features = c("Tbr1"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-p4 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= Tbr1)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-# Mapt 
-p5 <- FeaturePlot(object = Neurons.data ,
-            features = c("Mapt"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-p6 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= Mapt)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-p1 + p2 + p3 + p4 + p5 + p6 + patchwork::plot_layout(ncol = 2)
-```
-
 ```{r}
-ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= nUMI/10000)) +
+ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= nCount_RNA/10000)) +
         geom_point(aes(color= Lineage), size=0.5) +
         scale_color_manual(values= c("#cc391b", "#026c9a")) +
         geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
@@ -306,7 +205,7 @@ table(Progenitors.data$Cell_ident)
 To balance the number of progenitors in both domain we will only work with *Hem* and *Medial_pallium* annotated cells. Since we are using pallial cell to contrast CR specific trajectory we think this approximation will not significantly affect our analysis.
 
 ```{r}
-Progenitors.data <-  subset(Progenitors.data, idents = c("Hem", "Medial_pallium"))
+Progenitors.data <-  subset(Progenitors.data, subset = Cell_ident %in% c("Hem", "Medial_pallium") & orig.ident == "Hem1")
 ```
 
 ```{r fig.dim=c(6, 4)}
@@ -335,7 +234,7 @@ p1 + p2 + p3  + patchwork::plot_layout(ncol = 2)
 
 ```{r}
 # Start with neurons data
-Trajectories.all <- Trajectories.neurons %>% select(Barcodes, nUMI, Spring_1, Spring_2, AP_signature1, BP_signature1, EN_signature1, LN_signature1, Lineage)
+Trajectories.all <- Trajectories.neurons %>% select(Barcodes, nCount_RNA, Spring_1, Spring_2, Lineage)
 
 Trajectories.all$Pseudotime <- Trajectories.neurons$PseudotimeScore.shifted + 0.5
 Trajectories.all$Phase <- NA
@@ -344,24 +243,24 @@ Trajectories.all$Phase <- NA
 ```{r}
 # Add progenitors data
 Trajectories.progenitors <- Progenitors.data@meta.data %>%
-                              select(Barcodes, nUMI, Spring_1, Spring_2, AP_signature1, BP_signature1, EN_signature1, LN_signature1) %>% 
+                              select(Barcodes, nCount_RNA, Spring_1, Spring_2) %>% 
                               mutate(Lineage= ifelse(Progenitors.data$Cell_ident == "Medial_pallium", "Pallial_neurons", "Cajal-Retzius_neurons") ,
                                      Pseudotime= Progenitors.data$Revelio.cc/2,
                                      Phase = Progenitors.data$Revelio.phase)
 ```
 
 ```{r}
-Trajectories.all <- rbind(Trajectories.all, Trajectories.progenitors)
+Trajectories.WT<- rbind(Trajectories.all, Trajectories.progenitors)
 
-Trajectories.all$Phase <- factor(Trajectories.all$Phase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1"))
+Trajectories.WT$Phase <- factor(Trajectories.WT$Phase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1"))
 ```
 
 ```{r fig.dim=c(9,3)}
-p1 <- ggplot(Trajectories.all, aes(Spring_1, Spring_2)) +
+p1 <- ggplot(Trajectories.WT, aes(Spring_1, Spring_2)) +
         geom_point(aes(color=Pseudotime), size=0.5) + 
         scale_color_gradientn(colours=rev(brewer.pal(n =11, name = "Spectral")), name='Pseudotime score')
 
-p2 <- ggplot(Trajectories.all, aes(Spring_1, Spring_2)) +
+p2 <- ggplot(Trajectories.WT, aes(Spring_1, Spring_2)) +
         geom_point(aes(color= Lineage), size=0.5) +
         scale_color_manual(values= c("#cc391b", "#026c9a"))
 
@@ -369,13 +268,13 @@ p1 + p2
 ```
 
 ```{r fig.dim=c(9,3)}
-p1 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
+p1 <- ggplot(Trajectories.WT, aes(x= Pseudotime, y= nCount_RNA/10000)) +
         geom_point(aes(color= Phase), size=0.5) +
         scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
         geom_smooth(method="loess", n= 50, fill="grey") +
         ylim(0,NA)
 
-p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
+p2 <- ggplot(Trajectories.WT, aes(x= Pseudotime, y= nCount_RNA/10000)) +
         geom_point(aes(color= Lineage), size=0.5) +
         scale_color_manual(values= c("#cc391b", "#026c9a")) +
         geom_smooth(method="loess", n= 50, fill="grey") +
@@ -383,261 +282,32 @@ p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
 
 p1 / p2
 ```
-
 ```{r}
-p1 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= AP_signature1)) +
-  geom_point(aes(color= Lineage), size=0.5) +
-  scale_color_manual(values= c("#cc391b", "#026c9a")) +
-  geom_smooth(method="loess", n= 50, fill="grey")
-
-
-p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= BP_signature1)) +
-  geom_point(aes(color= Lineage), size=0.5) +
-  scale_color_manual(values= c("#cc391b", "#026c9a")) +
-  geom_smooth(method="loess", n= 50, fill="grey")
-
-p3 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= EN_signature1)) +
-  geom_point(aes(color= Lineage), size=0.5) +
-  scale_color_manual(values= c("#cc391b", "#026c9a")) +
-  geom_smooth(method="loess", n= 50, fill="grey")
-
-p4 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= LN_signature1)) +
-  geom_point(aes(color= Lineage), size=0.5) +
-  scale_color_manual(values= c("#cc391b", "#026c9a")) +
-  geom_smooth(method="loess", n= 50, fill="grey")
-
-
-p1 / p2 / p3 / p4
-```
-
-
-```{r}
-rm(list = ls()[!ls() %in% c("Trajectories.all")])
-```
-
-## Subset the full dataset Seurat object
-
-```{r}
-Hem.data <- readRDS("../QC.filtered.clustered.cells.RDS")
-```
-
-```{r}
-Neuro.trajectories_WT <- CreateSeuratObject(counts = Hem.data@assays$RNA@data[, Trajectories.all$Barcodes],
-                                            meta.data = Trajectories.all)
-
-spring <- as.matrix(Neuro.trajectories_WT@meta.data %>% select("Spring_1", "Spring_2"))
-  
-Neuro.trajectories_WT[["spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_", assay = DefaultAssay(Neuro.trajectories_WT))
-```
-
-```{r fig.dim=c(6, 12)}
-p1 <- FeaturePlot(object = Neuro.trajectories_WT,
-            features = "Pseudotime",
-            pt.size = 0.5,
-            cols = rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-p2 <- DimPlot(object = Neuro.trajectories_WT,
-        group.by = "Lineage",
-        pt.size = 0.5,
-        reduction = "spring",
-        cols =  c("#cc391b", "#026c9a")) & NoAxes()
-
-
-p3 <- DimPlot(object = Neuro.trajectories_WT,
-        group.by = "Phase",
-        pt.size = 0.5,
-        reduction = "spring",
-        cols =  c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) & NoAxes()
-
-p1 + p2 + p3
-```
-
-
-```{r}
-rm(list = ls()[!ls() %in% c("Neuro.trajectories_WT")])
-```
-
-### Normalization
-
-```{r}
-Neuro.trajectories_WT <- NormalizeData(Neuro.trajectories_WT, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
-```
-
-```{r}
-Neuro.trajectories_WT <- FindVariableFeatures(Neuro.trajectories_WT, selection.method = "disp", nfeatures = 3000, assay = "RNA")
-```
-
-### Plot some genes along pseudotime
-
-```{r fig.dim=c(9,8)}
-source("../Functions/functions_GeneTrends.R")
-
-Plot.Genes.trend(Seurat.data= Neuro.trajectories_WT,
-                 group.by = "Lineage",
-                 genes= c("Gas1","Sox2",
-                          "Neurog2", "Btg2",
-                          "Tbr1", "Mapt",
-                          "Trp73", "Foxg1"))
-```
-
-```{r fig.dim=c(9,6)}
-Plot.Genes.trend(Seurat.data= Neuro.trajectories_WT,
-                 group.by = "Lineage",
-                 genes= c("Gmnc", "Mcidas",
-                          "Ccno", "Ccdc67",
-                          "Foxj1", "Trp73",
-                          "Lhx1", "Cdkn1a"))
-```
-
-```{r fig.dim=c(9,5)}
-Plot.Genes.trend(Seurat.data= Neuro.trajectories_WT,
-                 group.by = "Lineage",
-                 genes= c("Mki67", "Top2a",
-                          "H2afx", "Cdkn1c"))
-```
-
-## Use monocle2 to model gene expression along cycling axis
-
-### Initialize a monocle object
-
-```{r}
-# Transfer metadata
-meta.data <- data.frame(Barcode= Neuro.trajectories_WT$Barcodes,
-                        Lineage= Neuro.trajectories_WT$Lineage,
-                        Pseudotime= Neuro.trajectories_WT$Pseudotime,
-                        Phase= Neuro.trajectories_WT$Phase)
-
-Annot.data  <- new('AnnotatedDataFrame', data = meta.data)
-
-# Transfer counts data
-var.genes <- Neuro.trajectories_WT[["RNA"]]@var.features
-count.data = data.frame(gene_short_name = rownames(Neuro.trajectories_WT[["RNA"]]@data),
-                        row.names = rownames(Neuro.trajectories_WT[["RNA"]]@data))
-
-feature.data <- new('AnnotatedDataFrame', data = count.data)
-
-# Create the CellDataSet object including variable genes only
-gbm_cds_WT <- newCellDataSet(Neuro.trajectories_WT[["RNA"]]@counts,
-                              phenoData = Annot.data,
-                              featureData = feature.data,
-                              lowerDetectionLimit = 0,
-                              expressionFamily = negbinomial())
-```
-
-```{r message=FALSE, warning=FALSE, cache=TRUE}
-gbm_cds_WT <- estimateSizeFactors(gbm_cds_WT)
-gbm_cds_WT <- estimateDispersions(gbm_cds_WT)
-gbm_cds_WT <- detectGenes(gbm_cds_WT, min_expr = 0.1)
-```
-
-```{r}
-rm(list = ls()[!ls() %in% c("Neuro.trajectories_WT", "gbm_cds_WT", "Gene.Trend", "Plot.Genes.trend")])
+rm(list = ls()[!ls() %in% c("Trajectories.WT")])
 gc()
 ```
 
 # Pseudotime in the KO
 
 ```{r}
-KO <- readRDS("./GmncKO.cells.RDS") %>% subset(idents = c(6:9), invert = T)
+WT.KO.integrated <- readRDS("WT_KO.integrated.RDS")
 ```
 
-## Compute differentiation states scores
-
-### AP
+## Extract CR and pallial neurons
 
 ```{r}
-APgenes <- c("Rgcc", "Sparc", "Hes5","Hes1", "Slc1a3",
-             "Ddah1", "Ldha", "Hmga2","Sfrp1", "Id4",
-             "Creb5", "Ptn", "Lpar1", "Rcn1","Zfp36l1",
-             "Sox9", "Sox2", "Nr2e1", "Ttyh1", "Trip6")
+Neurons.data <-  subset(WT.KO.integrated,
+                        subset = Lineage %in% c("Cajal-Retzius_neurons", "Pallial_neurons") & orig.ident == "Gmnc_KO" & Cell.ident.KO %in% c("Neuron_prob.2", "Neuron_prob.3"))
 
-KO <- AddModuleScore(KO,
-                     features = list(APgenes),
-                     name = "AP_signature")
-```
-
-### BP
-
-```{r}
-BPgenes <- c("Eomes", "Igsf8", "Insm1", "Elavl2", "Elavl4",
-             "Hes6","Gadd45g", "Neurog2", "Btg2", "Neurog1")
-
-KO <- AddModuleScore(KO,
-                     features = list(BPgenes),
-                     name = "BP_signature")
-```
-
-### EN
-
-```{r}
-ENgenes <- c("Mfap4", "Nhlh2", "Nhlh1", "Ppp1r14a", "Nav1",
-             "Neurod1", "Sorl1", "Svip", "Cxcl12", "Tenm4",
-             "Dll3", "Rgmb", "Cntn2", "Vat1")
-
-KO <- AddModuleScore(KO,
-                     features = list(ENgenes),
-                     name = "EN_signature")
-```
-
-### LN
-
-```{r}
-LNgenes <- c("Snhg11", "Pcsk1n", "Mapt", "Ina", "Stmn4",
-             "Gap43", "Tubb2a", "Ly6h","Ptprd", "Mef2c")
-
-KO <- AddModuleScore(KO,
-                     features = list(LNgenes),
-                     name = "LN_signature")
-```
-
-```{r}
-FeaturePlot(object = KO,
-            features = c("AP_signature1", "BP_signature1",
-                              "EN_signature1", "LN_signature1"),
-            pt.size = 0.75,
-            cols = rev(brewer.pal(10,"Spectral")),
-            reduction = "spring",
-            order = T) & NoAxes() & NoLegend()
-```
-
-## Group cells in Pallial or CR lineage
-
-```{r}
-KO$Lineage <- sapply(KO$Cell.ident,
-                              FUN = function(x) {
-                                if (x %in% c("Neuron_prob.2", "Hem")) {
-                                  x = "Cajal-Retzius_neurons"
-                                } else if (x %in% c("Neuron_prob.3", "Medial_pallium")) {
-                                  x = "Pallial_neurons"
-                                } else {
-                                  x = "other"
-                                  }
-                              })
-```
-
-```{r}
-DimPlot(KO,
-        reduction = "spring",
+DimPlot(Neurons.data,
         group.by = "Lineage",
-        pt.size = 0.5,
-        cols =  c("#cc391b","#969696","#026c9a")
-        ) + NoAxes()
-```
-
-## Fit principale curve on the two lineages
-
-```{r}
-Neurons.data <-  subset(KO,  subset = Lineage %in% c("Cajal-Retzius_neurons", "Pallial_neurons") & Cell.ident %in% c("Neuron_prob.2", "Neuron_prob.3"))
-
-DimPlot(Neurons.data ,
-        reduction = "spring",
-        group.by = "Lineage",
+        reduction = "integrated_spring",
         pt.size = 1,
         cols =  c("#cc391b","#026c9a")
         ) + NoAxes()
 ```
+
+## Fit principale curve on the two lineages
 
 ```{r}
 fit <- principal_curve(as.matrix(Neurons.data@meta.data[,c("Spring_1", "Spring_2")]),
@@ -651,7 +321,7 @@ fit <- principal_curve(as.matrix(Neurons.data@meta.data[,c("Spring_1", "Spring_2
 #Pseudotime score
 PseudotimeScore <- fit$lambda/max(fit$lambda)
 
-if (cor(PseudotimeScore, Neurons.data@assays$SCT@data['Hmga2', ]) > 0) {
+if (cor(PseudotimeScore, Neurons.data@assays$RNA@data['Hmga2', ]) > 0) {
   Neurons.data$PseudotimeScore <- -(PseudotimeScore - max(PseudotimeScore))
 }
 
@@ -662,127 +332,18 @@ ggplot(Neurons.data@meta.data, aes(Spring_1, Spring_2)) +
   scale_color_gradientn(colours=rev(cols), name='Pseudotime score')
 ```
 
-### Plot pan-neuronal genes along this axis
-
-```{r}
-Neurons.data <- NormalizeData(Neurons.data, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
-```
-
-```{r fig.dim=c(9,10)}
-Trajectories.neurons <- Neurons.data@meta.data %>% select(Barcodes, Spring_1, Spring_2,
-                                                          AP_signature1, BP_signature1, EN_signature1, LN_signature1,
-                                                          Lineage, PseudotimeScore)
-
-# Neurog2
-p1 <- FeaturePlot(object = Neurons.data,
-            features = c("Neurog2"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-Trajectories.neurons$Neurog2 <- Neurons.data@assays$RNA@data["Neurog2", Trajectories.neurons$Barcodes]
-
-p2 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore, y= Neurog2)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-# Tbr1 
-p3 <- FeaturePlot(object = Neurons.data ,
-            features = c("Tbr1"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-Trajectories.neurons$Tbr1 <- Neurons.data@assays$RNA@data["Tbr1", Trajectories.neurons$Barcodes]
-
-p4 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore, y= Tbr1)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-# Mapt 
-p5 <- FeaturePlot(object = Neurons.data ,
-            features = c("Mapt"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-Trajectories.neurons$Mapt <- Neurons.data@assays$RNA@data["Mapt", Trajectories.neurons$Barcodes]
-
-p6 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore, y= Mapt)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-p1 + p2 + p3 + p4 + p5 + p6 + patchwork::plot_layout(ncol = 2)
-```
-
 ### Shift pseudotime score
 
 ```{r}
-score <- sapply(Trajectories.neurons$PseudotimeScore,
-                FUN = function(x) if (x <= 0.15) {x= 0.15} else { x=x })
+score <- sapply(Neurons.data$PseudotimeScore,
+                FUN = function(x) if (x <= 0.25) {x= 0.25} else { x=x })
 
-Trajectories.neurons$PseudotimeScore.shifted <- (score - min(score)) / (max(score) - min(score))
-```
-
-```{r}
-# Neurog2
-p1 <- FeaturePlot(object = Neurons.data ,
-            features = c("Neurog2"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-p2 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= Neurog2)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-# Tbr1 
-p3 <- FeaturePlot(object = Neurons.data ,
-            features = c("Tbr1"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-p4 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= Tbr1)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-# Mapt 
-p5 <- FeaturePlot(object = Neurons.data ,
-            features = c("Mapt"),
-            pt.size = 0.5,
-            cols = c("grey90", brewer.pal(9,"YlGnBu")),
-            reduction = "spring",
-            order = T) & NoAxes()
-
-p6 <- ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= Mapt)) +
-        geom_point(aes(color= Lineage), size=0.5) +
-        scale_color_manual(values= c("#cc391b", "#026c9a")) +
-        geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
-        ylim(0,NA)
-
-p1 + p2 + p3 + p4 + p5 + p6 + patchwork::plot_layout(ncol = 2)
+Neurons.data$PseudotimeScore.shifted <- (score - min(score)) / (max(score) - min(score))
 ```
 
 
 ```{r}
-Trajectories.neurons$nUMI <- Neurons.data$nCount_RNA
-
-ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= nUMI/10000)) +
+ggplot(Neurons.data@meta.data, aes(x= PseudotimeScore.shifted, y= nCount_RNA/10000)) +
         geom_point(aes(color= Lineage), size=0.5) +
         scale_color_manual(values= c("#cc391b", "#026c9a")) +
         geom_smooth(method="loess", n= 50, aes(color= Lineage)) +
@@ -794,22 +355,17 @@ ggplot(Trajectories.neurons, aes(x= PseudotimeScore.shifted, y= nUMI/10000)) +
 To balance the number of progenitors in both domain we will only work with *Hem* and *Medial_pallium* annotated cells. Since we are using pallial cell to contrast CR specific trajectory we think this approximation will not significantly affect our analysis.
 
 ```{r}
-Progenitors.data <-  subset(KO,  subset = Lineage %in% c("Cajal-Retzius_neurons", "Pallial_neurons") & Cell.ident %in% c("Hem", "Medial_pallium"))
+Progenitors.data <-  subset(WT.KO.integrated,
+                            subset = Lineage %in% c("Cajal-Retzius_neurons", "Pallial_neurons") & orig.ident == "Gmnc_KO" & Cell.ident.KO %in% c("Hem", "Medial_pallium"))
 
 DimPlot(Progenitors.data,
-        reduction = "spring",
-        group.by = "Cell.ident",
+        reduction = "integrated_spring",
+        group.by = "Cell.ident.KO",
         pt.size = 1,
         cols =  c("#cc391b","#026c9a")
         ) + NoAxes()
-```
 
-```{r}
-table(Progenitors.data$Cell.ident)
-```
-
-```{r}
-rm(list = ls()[!ls() %in% c("Neuro.trajectories_WT", "gbm_cds_WT", "Trajectories.neurons", "Progenitors.data")])
+rm(WT.KO.integrated)
 gc()
 ```
 
@@ -833,7 +389,7 @@ CCgenes <- read.table("../ChoroidPlexus_trajectory/CCgenes.csv", sep = ";", head
 We can now follow the tutorial form the [package github page](https://github.com/danielschw188/Revelio)
 
 
-```{r}
+```{r cache=TRUE}
 myData <- createRevelioObject(rawData = rawCounts,
                               cyclicGenes = CCgenes,
                               lowernGeneCutoff = 0,
@@ -846,13 +402,13 @@ gc()
 
 The getCellCyclePhaseAssignInformation filter “outlier” cells for cell cycle phase assignation. We modified the function to keep all cells as we observed this does not affect the global cell cycle fitting procedure
 
-```{r}
+```{r cache=TRUE}
 source("../Functions/functions_InitializationCCPhaseAssignFiltering.R")
 
 myData <- getCellCyclePhaseAssign_allcells(myData)
 ```
 
-```{r}
+```{r cache=TRUE}
 myData <- getPCAData(dataList = myData)
 
 myData <- getOptimalRotation(dataList = myData)
@@ -865,7 +421,7 @@ CellCycledata <- cbind(as.data.frame(t(myData@transformedData$dc$data[1:2,])),
                        nUMI= myData@cellInfo$nUMI,
                        Revelio.phase = factor(myData@cellInfo$ccPhase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1")),
                        Revelio.cc= myData@cellInfo$ccPercentageUniformlySpaced,
-                       Domain= Progenitors.data$Cell.ident)
+                       Domain= Progenitors.data$Cell.ident.KO)
 ```
 
 ```{r}
@@ -899,13 +455,13 @@ p1 <- FeaturePlot(object = Progenitors.data,
                   features = "Revelio.cc",
                   pt.size = 1,
                   cols = rev(brewer.pal(10,"Spectral")),
-                  reduction = "spring",
+                  reduction = "integrated_spring",
                   order = T) & NoAxes()
 
 p2 <- DimPlot(object = Progenitors.data,
               group.by = "Revelio.phase",
               pt.size = 1,
-              reduction = "spring",
+              reduction = "integrated_spring",
               cols =  c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) & NoAxes()
 
 p1 / p2
@@ -914,9 +470,7 @@ p1 / p2
 ### Transfert learn cell cycle axis
 
 ```{r}
-Progenitors <- Progenitors.data@meta.data %>% select(Barcodes, Spring_1, Spring_2,
-                                                     AP_signature1, BP_signature1, EN_signature1, LN_signature1,
-                                                     Lineage)
+Progenitors <- Progenitors.data@meta.data %>% select(Barcodes, nCount_RNA, Spring_1, Spring_2, Lineage)
 
 Progenitors$PseudotimeScore <- CellCycledata$Revelio.cc
 Progenitors$nUMI <- Progenitors.data$nCount_RNA
@@ -926,32 +480,32 @@ Progenitors$nUMI <- Progenitors.data$nCount_RNA
 
 ```{r}
 # Start with neurons data
-Trajectories.all <- Trajectories.neurons %>% select(Barcodes, nUMI, Spring_1, Spring_2, AP_signature1, BP_signature1, EN_signature1, LN_signature1, Lineage)
+Trajectories.all <- Neurons.data@meta.data %>% select(Barcodes, nCount_RNA, Spring_1, Spring_2, Lineage)
 
-Trajectories.all$Pseudotime <- Trajectories.neurons$PseudotimeScore.shifted + 0.5
+Trajectories.all$Pseudotime <- Neurons.data$PseudotimeScore.shifted + 0.5
 Trajectories.all$Phase <- NA
 ```
 
 ```{r}
 # Add progenitors data
 Trajectories.progenitors <- Progenitors %>%
-                              select(Barcodes, nUMI, Spring_1, Spring_2, AP_signature1, BP_signature1, EN_signature1, LN_signature1, Lineage) %>% 
+                              select(Barcodes, nCount_RNA, Spring_1, Spring_2, Lineage) %>% 
                               mutate(Pseudotime= Progenitors.data$Revelio.cc/2,
                                      Phase = Progenitors.data$Revelio.phase)
 ```
 
 ```{r}
-Trajectories.all <- rbind(Trajectories.all, Trajectories.progenitors)
+Trajectories.KO <- rbind(Trajectories.all, Trajectories.progenitors)
 
-Trajectories.all$Phase <- factor(Trajectories.all$Phase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1"))
+Trajectories.KO$Phase <- factor(Trajectories.KO$Phase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1"))
 ```
 
 ```{r}
-p1 <- ggplot(Trajectories.all, aes(Spring_1, Spring_2)) +
+p1 <- ggplot(Trajectories.KO, aes(Spring_1, Spring_2)) +
         geom_point(aes(color=Pseudotime), size=0.5) + 
         scale_color_gradientn(colours=rev(brewer.pal(n =11, name = "Spectral")), name='Pseudotime score')
 
-p2 <- ggplot(Trajectories.all, aes(Spring_1, Spring_2)) +
+p2 <- ggplot(Trajectories.KO, aes(Spring_1, Spring_2)) +
         geom_point(aes(color= Lineage), size=0.5) +
         scale_color_manual(values= c("#cc391b", "#026c9a"))
 
@@ -959,13 +513,13 @@ p1 + p2
 ```
 
 ```{r}
-p1 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
+p1 <- ggplot(Trajectories.KO, aes(x= Pseudotime, y= nCount_RNA/10000)) +
         geom_point(aes(color= Phase), size=0.5) +
         scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) +
         geom_smooth(method="loess", n= 50, fill="grey") +
         ylim(0,NA)
 
-p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
+p2 <- ggplot(Trajectories.KO, aes(x= Pseudotime, y= nCount_RNA/10000)) +
         geom_point(aes(color= Lineage), size=0.5) +
         scale_color_manual(values= c("#cc391b", "#026c9a")) +
         geom_smooth(aes(color= Lineage), method="loess", n= 50, fill="grey") +
@@ -974,67 +528,51 @@ p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= nUMI/10000)) +
 p1 / p2
 ```
 
-
 ```{r}
-p1 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= AP_signature1)) +
-  geom_point(aes(color= Lineage), size=0.5) +
-  scale_color_manual(values= c("#cc391b", "#026c9a")) +
-  geom_smooth(aes(color= Lineage), method="loess", n= 50, fill="grey")
+Trajectories <- rbind(Trajectories.KO, Trajectories.WT)
 
-
-p2 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= BP_signature1)) +
-  geom_point(aes(color= Lineage), size=0.5) +
-  scale_color_manual(values= c("#cc391b", "#026c9a")) +
-  geom_smooth(aes(color= Lineage), method="loess", n= 50, fill="grey")
-
-p3 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= EN_signature1)) +
-  geom_point(aes(color= Lineage), size=0.5) +
-  scale_color_manual(values= c("#cc391b", "#026c9a")) +
-  geom_smooth(aes(color= Lineage), method="loess", n= 50, fill="grey")
-
-p4 <- ggplot(Trajectories.all, aes(x= Pseudotime, y= LN_signature1)) +
-  geom_point(aes(color= Lineage), size=0.5) +
-  scale_color_manual(values= c("#cc391b", "#026c9a")) +
-  geom_smooth(aes(color= Lineage), method="loess", n= 50, fill="grey")
-
-
-p1 / p2 / p3 / p4
+rm(list = ls()[!ls() %in% c("Trajectories")])
 ```
 
-### Subset the full Seurat object
+
+# Subset the full integrated dataset
 
 ```{r}
-KO <- readRDS("./GmncKO.cells.RDS") %>% subset(idents = c(6:9), invert = T)
+WT.KO.integrated <- readRDS("WT_KO.integrated.RDS")
+
+meta.data <- WT.KO.integrated@meta.data[Trajectories$Barcodes,]
+meta.data$Pseudotime <- Trajectories$Pseudotime
+meta.data$Phase <- Trajectories$Phase
 ```
 
 ```{r}
-Neuro.trajectories_KO <- CreateSeuratObject(counts = KO@assays$RNA@data[, Trajectories.all$Barcodes],
-                                            meta.data = Trajectories.all)
+WT.KO.integrated <- CreateSeuratObject(counts = WT.KO.integrated@assays$RNA@counts[, Trajectories$Barcodes],
+                                       meta.data = meta.data)
 
-spring <- as.matrix(Neuro.trajectories_KO@meta.data %>% select("Spring_1", "Spring_2"))
+spring <- as.matrix(WT.KO.integrated@meta.data %>% select("Integrated_Spring_1", "Integrated_Spring_2"))
   
-Neuro.trajectories_KO[["spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_", assay = DefaultAssay(Neuro.trajectories_KO))
+WT.KO.integrated[["integrated_spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_", assay = DefaultAssay(WT.KO.integrated))
 ```
 
 ```{r}
-p1 <- FeaturePlot(object = Neuro.trajectories_KO,
+p1 <- FeaturePlot(object = WT.KO.integrated,
             features = "Pseudotime",
             pt.size = 0.5,
             cols = rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
-            reduction = "spring",
+            reduction = "integrated_spring",
             order = T) & NoAxes()
 
-p2 <- DimPlot(object = Neuro.trajectories_KO,
+p2 <- DimPlot(object = WT.KO.integrated,
         group.by = "Lineage",
         pt.size = 0.5,
-        reduction = "spring",
+        reduction = "integrated_spring",
         cols =  c("#cc391b", "#026c9a")) & NoAxes()
 
 
-p3 <- DimPlot(object = Neuro.trajectories_KO,
+p3 <- DimPlot(object = WT.KO.integrated,
         group.by = "Phase",
         pt.size = 0.5,
-        reduction = "spring",
+        reduction = "integrated_spring",
         cols =  c(wes_palette("FantasticFox1")[1:3],"grey40",wes_palette("FantasticFox1")[5])) & NoAxes()
 
 p1 + p2 + p3
@@ -1043,11 +581,11 @@ p1 + p2 + p3
 ### Normalization
 
 ```{r}
-Neuro.trajectories_KO <- NormalizeData(Neuro.trajectories_KO, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+WT.KO.integrated <- NormalizeData(WT.KO.integrated, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
 ```
 
 ```{r}
-Neuro.trajectories_KO <- FindVariableFeatures(Neuro.trajectories_KO, selection.method = "disp", nfeatures = 3000, assay = "RNA")
+WT.KO.integrated <- FindVariableFeatures(WT.KO.integrated, selection.method = "disp", nfeatures = 6500, assay = "RNA")
 ```
 
 ### Plot some genes along pseudotime
@@ -1055,8 +593,8 @@ Neuro.trajectories_KO <- FindVariableFeatures(Neuro.trajectories_KO, selection.m
 ```{r fig.dim=c(9,8)}
 source("../Functions/functions_GeneTrends.R")
 
-Plot.Genes.trend(Seurat.data= Neuro.trajectories_KO,
-                 group.by = "Lineage",
+Plot.Genes.trend(Seurat.data= WT.KO.integrated,
+                 group.by = "Genotype",
                  genes= c("Gas1","Sox2",
                           "Neurog2", "Btg2",
                           "Tbr1", "Mapt",
@@ -1064,18 +602,34 @@ Plot.Genes.trend(Seurat.data= Neuro.trajectories_KO,
 ```
 
 ```{r fig.dim=c(9,6)}
-Plot.Genes.trend(Seurat.data= Neuro.trajectories_KO,
-                 group.by = "Lineage",
+Plot.Genes.trend(Seurat.data= WT.KO.integrated,
+                 group.by = "Genotype",
                  genes= c("Gmnc", "Mcidas",
                           "Ccno", "Ccdc67",
                           "Foxj1", "Trp73",
                           "Lhx1", "Cdkn1a"))
 ```
 
+```{r}
+CR <- WT.KO.integrated@meta.data %>% filter(Lineage == "Cajal-Retzius_neurons") %>% select(Barcodes,Pseudotime,orig.ident)
+
+CR.genes <- as.data.frame(t(WT.KO.integrated@assays$RNA@data[c("Sox2","Reln", "Nhlh2", "Ebf3"),CR$Barcodes]))
+CR.genes$Pseudotime <- CR$Pseudotime
+CR.genes$Genotype <- factor(CR$orig.ident, levels = c("Hem1", "Gmnc_KO") ) 
+
+CR.genes  <- reshape2::melt(CR.genes, id = c("Pseudotime", "Genotype"))
+
+
+ggplot(CR.genes, aes(x= Pseudotime, y= value)) +
+  geom_smooth(method="loess", n= 50, aes(color= variable, linetype= Genotype)) +
+  scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],wes_palette("FantasticFox1")[5])) +
+  ylim(0,NA)
+```
+
 ## Use monocle2 to model gene expression along cycling axis
 
 ```{r}
-rm(list = ls()[!ls() %in% c("Neuro.trajectories_WT", "gbm_cds_WT", "Neuro.trajectories_KO")])
+rm(list = ls()[!ls() %in% c("WT.KO.integrated")])
 gc()
 ```
 
@@ -1084,20 +638,21 @@ gc()
 ```{r}
 # Transfer metadata
 Annot.data  <- new('AnnotatedDataFrame',
-                   data = data.frame(Barcode= Neuro.trajectories_KO$Barcodes,
-                          Lineage= Neuro.trajectories_KO$Lineage,
-                          Pseudotime= Neuro.trajectories_KO$Pseudotime,
-                          Phase= Neuro.trajectories_KO$Phase))
+                   data = data.frame(Barcode= WT.KO.integrated$Barcodes,
+                                     Lineage= WT.KO.integrated$Lineage,
+                                     Pseudotime= WT.KO.integrated$Pseudotime,
+                                     Phase= WT.KO.integrated$Phase,
+                                     Genotype= WT.KO.integrated$orig.ident))
 
 # Transfer counts data
-var.genes <- Neuro.trajectories_KO[["RNA"]]@var.features
+var.genes <- WT.KO.integrated[["RNA"]]@var.features
 
 feature.data <- new('AnnotatedDataFrame',
-                    data = data.frame(gene_short_name = rownames(Neuro.trajectories_KO[["RNA"]]@data),
-                           row.names = rownames(Neuro.trajectories_KO[["RNA"]]@data)))
+                    data = data.frame(gene_short_name = rownames(WT.KO.integrated[["RNA"]]@counts[var.genes,]),
+                                      row.names = rownames(WT.KO.integrated[["RNA"]]@counts[var.genes,])))
 
 # Create the CellDataSet object including variable genes only
-gbm_cds_KO <- newCellDataSet(Neuro.trajectories_KO[["RNA"]]@counts,
+gbm_cds <- newCellDataSet(WT.KO.integrated[["RNA"]]@counts[var.genes,],
                               phenoData = Annot.data,
                               featureData = feature.data,
                               lowerDetectionLimit = 0,
@@ -1105,283 +660,280 @@ gbm_cds_KO <- newCellDataSet(Neuro.trajectories_KO[["RNA"]]@counts,
 ```
 
 ```{r message=FALSE, warning=FALSE, cache=TRUE}
-gbm_cds_KO <- estimateSizeFactors(gbm_cds_KO)
-gbm_cds_KO <- estimateDispersions(gbm_cds_KO)
-gbm_cds_KO <- detectGenes(gbm_cds_KO, min_expr = 0.1)
+gbm_cds <- estimateSizeFactors(gbm_cds)
+gbm_cds <- estimateDispersions(gbm_cds)
+gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
 ```
 
 ```{r}
-rm(list = ls()[!ls() %in% c("Neuro.trajectories_WT","Neuro.trajectories_KO", "gbm_cds_WT", "gbm_cds_KO", "Gene.Trend", "Plot.Genes.trend")])
+rm(list = ls()[!ls() %in% c("WT.KO.integrated", "gbm_cds")])
 gc()
 ```
 
+# Plot WT CR dynamic genes along WT and KO trajectories
 
-# Find DEG among all WT and KO trajectories
+```{r cache=TRUE}
+# Load WT CR variable genes along pseudotime
+WT.CR.genes <- read.table("../CajalRetzius_trajectory/CR_dynamic_genes.csv", sep = ";", header = T)
 
-## WT DEG
+# Extract CR lineage in both genotypes
+CR.pData <- pData(gbm_cds) %>% subset(Lineage == "Cajal-Retzius_neurons")
+
+# Create a new pseudotime vector of 300 points
+nPoints <- 300
+
+new_data = list()
+for (Genotype in unique(CR.pData$Genotype)){
+  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(CR.pData$Pseudotime), max(CR.pData$Pseudotime), length.out = nPoints), Genotype= Genotype)
+}
+
+new_data = do.call(rbind, new_data)
+
+# Smooth gene expression
+Diff.curve_matrix <- genSmoothCurves(gbm_cds[WT.CR.genes$Gene, CR.pData$Barcode],
+                                      trend_formula = "~sm.ns(Pseudotime, df = 3)*Genotype",
+                                      relative_expr = TRUE,
+                                      new_data = new_data,
+                                      cores= parallel::detectCores() - 2)
+```
 
 ```{r}
-num.cells <- Matrix::rowSums(Neuro.trajectories_WT@assays$RNA@counts > 0)
-n.expressed <- names(x = num.cells[which(x = num.cells >= 200)])
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Diff.curve_matrix[,301:600]),method = "pearson"))), k= 5)
 
-Input.genes <- rownames(gbm_cds_WT)[rownames(gbm_cds_WT) %in% n.expressed]
+CR.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
+                                Waves= Pseudotime.genes.clusters$clustering,
+                                Gene.Clusters = Pseudotime.genes.clusters$clustering) %>% arrange(Gene.Clusters)
+
+row.names(CR.Gene.dynamique) <- CR.Gene.dynamique$Gene
+CR.Gene.dynamique$Gene.Clusters <- paste0("Clust.", CR.Gene.dynamique$Gene.Clusters)
 ```
-
-
-```{r  message=FALSE, warning=FALSE, cache=TRUE}
-WT.genes <- differentialGeneTest(gbm_cds_WT[Input.genes, ], 
-                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
-                                 reducedModelFormulaStr = "~1", 
-                                 cores = parallel::detectCores() - 2)
-
-#Filter based on FDR
-WT.genes.filtered <- WT.genes  %>% filter(qval < 1e-100)
-```
-
-## KO DEG
 
 ```{r}
-num.cells <- Matrix::rowSums(Neuro.trajectories_KO@assays$RNA@counts > 0)
-n.expressed <- names(x = num.cells[which(x = num.cells >= 200)])
+# Order the rows using seriation
+dst <- as.dist((1-cor(scale(t(Diff.curve_matrix[,301:600])), method = "pearson")))
+row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
+gene.order <- rownames(Diff.curve_matrix[,301:600][get_order(row.ser),])
 
-Input.genes <- rownames(gbm_cds_KO)[rownames(gbm_cds_KO) %in% n.expressed]
+# Set annotation colors
+pal <- wes_palette("Darjeeling1")
+anno.colors <- list(lineage = c(Gmnc_KO="#026c9a", Gmnc_WT="#cc391b"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
+
+
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(300:1,#KO 
+                                  301:600)], #WT
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
 ```
+```{r}
+gene.order <- gene.order[c(382:622,1:381)]
 
-
-```{r  message=FALSE, warning=FALSE, cache=TRUE}
-KO.genes <- differentialGeneTest(gbm_cds_KO[Input.genes, ], 
-                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
-                                 reducedModelFormulaStr = "~1", 
-                                 cores = parallel::detectCores() - 2)
-
-#Filter based on FDR
-KO.genes.filtered <- KO.genes  %>% filter(qval < 1e-100)
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(300:1,#Pal 
+                                  301:600)], #CR
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   gaps_col = c(200,400),
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "WT CR enriched genes along GmncKO and GmncWT CR trajectories")
 ```
-
-# Correlation between trajectories
 
 ```{r}
-WT_KO_DEG <- union(KO.genes.filtered$gene_short_name, WT.genes.filtered$gene_short_name)
+anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
-TFs <- read.table("TF.csv", sep = ";")[,1]
-Input.TFs <- intersect(rownames(gbm_cds_KO)[rownames(gbm_cds_KO) %in% TFs], rownames(gbm_cds_WT)[rownames(gbm_cds_WT) %in% TFs])
+col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(100,200)))
+rownames(col.anno) <- 301:600
 
-CR_genes <- read.table("../CajalRetzius_trajectory/CR_dynamic_genes.csv", sep = ";", header = T)[,1]
-Input.TFs <- intersect(rownames(gbm_cds_KO)[rownames(gbm_cds_KO) %in% CR_genes], rownames(gbm_cds_WT)[rownames(gbm_cds_WT) %in% CR_genes])
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(301:600)], #CR
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = col.anno,
+                   annotation_colors = anno.colors,
+                   gaps_col = 100,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "WT CR enriched genes along GmncKO and GmncWT CR trajectories")
+```
+```{r}
+anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(1:300)], #CR
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(100,200))),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = F,
+                   gaps_col = 100,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "WT CR enriched genes along GmncKO CR trajectories")
+```
+
+```{r}
+CR <- WT.KO.integrated@meta.data %>% filter(Lineage == "Cajal-Retzius_neurons") %>% select(Barcodes,Pseudotime,orig.ident)
+
+CR.genes <- as.data.frame(t(WT.KO.integrated@assays$RNA@data[c("Gmnc","Trp73", "Lhx1", "Barhl2"),CR$Barcodes]))
+CR.genes$Pseudotime <- CR$Pseudotime
+CR.genes$Genotype <- factor(CR$orig.ident, levels = c("Hem1", "Gmnc_KO") ) 
+
+CR.genes  <- reshape2::melt(CR.genes, id = c("Pseudotime", "Genotype"))
+
+
+ggplot(CR.genes, aes(x= Pseudotime, y= value)) +
+  geom_smooth(method="loess", n= 50, aes(color= variable, linetype= Genotype)) +
+  scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],wes_palette("FantasticFox1")[5])) +
+  ylim(0,NA)
+```
+# DEG genes in the KO
+
+## Find DEG in the KO
+
+```{r cache=TRUE}
+KO.pData <- pData(gbm_cds) %>% subset(Genotype == "Gmnc_KO")
+
+pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed > 80, KO.pData$Barcode], 
+                                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)*Lineage", 
+                                                 reducedModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
+                                                 cores = parallel::detectCores() - 2)
+
+# Filter genes based on FDR
+pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-40)
 ```
 
 ```{r cache=TRUE}
-# Create a new pseudo-DV vector of 100 points
-nPoints <- 100
+# Create a new pseudo-DV vector of 300 points
+nPoints <- 300
 
-# Smooth gene expression along pseudo-maturation axis
 new_data = list()
-for (Lineage in unique(pData(gbm_cds_WT)$Lineage)){
-  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(pData(gbm_cds_WT)$Pseudotime),
-                                                                 max(pData(gbm_cds_WT)$Pseudotime),
-                                                                 length.out = nPoints),
-                                                Lineage=Lineage)
+for (Lineage in unique(KO.pData$Lineage)){
+  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(KO.pData$Pseudotime), max(KO.pData$Pseudotime), length.out = nPoints), Lineage=Lineage)
 }
 
 new_data = do.call(rbind, new_data)
 
-
-WT.smooth.curve.matrix <- genSmoothCurves(gbm_cds_WT[Input.TFs,],
-                                              trend_formula =  "~sm.ns(Pseudotime, df = 3)*Lineage",
-                                              relative_expr = TRUE,
-                                              new_data = new_data,
-                                              cores= parallel::detectCores() - 2)
-
-# Smooth gene expression along pseudo-maturation axis
-new_data = list()
-for (Lineage in unique(pData(gbm_cds_KO)$Lineage)){
-  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(pData(gbm_cds_KO)$Pseudotime),
-                                                                 max(pData(gbm_cds_KO)$Pseudotime),
-                                                                 length.out = nPoints),
-                                                Lineage=Lineage)
-}
-
-new_data = do.call(rbind, new_data)
-
-
-KO.smooth.curve.matrix <- genSmoothCurves(gbm_cds_KO[Input.TFs,],
-                                              trend_formula =  "~sm.ns(Pseudotime, df = 3)*Lineage",
-                                              relative_expr = TRUE,
-                                              new_data = new_data,
-                                              cores= parallel::detectCores() - 2)
+# Smooth gene expression
+Diff.curve_matrix <- genSmoothCurves(gbm_cds[as.character(pseudo.maturation.diff.filtered$gene_short_name), KO.pData$Barcode],
+                                      trend_formula = "~sm.ns(Pseudotime, df = 3)*Lineage",
+                                      relative_expr = TRUE,
+                                      new_data = new_data,
+                                      cores= parallel::detectCores() - 2)
 ```
 
-## Pallial neurons correlation
+## Compute the ABC for each gene
 
 ```{r}
-Smoothed.point.cor <- pdist::pdist(X= scale(t(KO.smooth.curve.matrix[,1:100])),
-                                   Y= scale(t(WT.smooth.curve.matrix[,1:100])))
+# Extract matrix containing smoothed curves for each lineages
+Pal_curve_matrix <- Diff.curve_matrix[, 1:nPoints] #Pallial points
+CR_curve_matrix <- Diff.curve_matrix[, (nPoints + 1):(2 * nPoints)] #CR points
 
-Smoothed.point.cor <- as.matrix(Smoothed.point.cor)
-rownames(Smoothed.point.cor) <- 1:100
-colnames(Smoothed.point.cor) <- 1:100
+# Direction of the comparison : postive ABCs <=> Upregulated in CR lineage
+ABCs_res <- CR_curve_matrix - Pal_curve_matrix
 
-anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"))
-anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(33,67)))
-rownames(anno) <- 1:100
+# Average logFC between the 2 curves
+ILR_res <- log2(CR_curve_matrix/ (Pal_curve_matrix + 0.1)) 
+  
+ABCs_res <- apply(ABCs_res, 1, function(x, nPoints) {
+                  avg_delta_x <- (x[1:(nPoints - 1)] + x[2:(nPoints)])/2
+                  step <- (100/(nPoints - 1))
+                  res <- round(sum(avg_delta_x * step), 3)
+                  return(res)},
+                  nPoints = nPoints) # Compute the area below the curve
+  
+ABCs_res <- cbind(ABCs_res, ILR_res[,ncol(ILR_res)])
+colnames(ABCs_res)<- c("ABCs", "Endpoint_ILR")
 
-p1 <- pheatmap::pheatmap(Smoothed.point.cor,
-         cluster_rows = F,
-         cluster_cols = F,
-         border_color = NA,
-         annotation_row = anno,
-         annotation_col = anno,
-         annotation_colors = anno.colors,
-         show_colnames = F,
-         show_rownames = F,
-         color = colorRampPalette(brewer.pal(n = 10, name = "RdBu"))(50),
-         main = "Pallial KO vs Pallial WT euclidian dist",
-         legend = F,
-         annotation_legend =F)
+# Import ABC values into the DE test results table
+pseudo.maturation.diff.filtered <- cbind(pseudo.maturation.diff.filtered[,1:4],
+                                         ABCs_res,
+                                         pseudo.maturation.diff.filtered[,5:6])
+```
+
+## KO Cajal-Retzius cells specific trajectory analysis
+
+```{r}
+# Extract Cajal-Retzius expressed genes
+CR.res <- as.data.frame(pseudo.maturation.diff.filtered[pseudo.maturation.diff.filtered$ABCs > 0,])
+CR.genes <- row.names(CR.res)
+
+CR_curve_matrix <- CR_curve_matrix[CR.genes, ]
 ```
 
 ```{r}
-Smoothed.point.cor <- pdist::pdist(X= scale(t(KO.smooth.curve.matrix[,101:200])),
-                                   Y= scale(t(WT.smooth.curve.matrix[,101:200])))
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(CR_curve_matrix),method = "pearson"))), k= 5)
 
-Smoothed.point.cor <- as.matrix(Smoothed.point.cor)
-rownames(Smoothed.point.cor) <- 1:100
-colnames(Smoothed.point.cor) <- 1:100
+CR.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
+                                 Waves= Pseudotime.genes.clusters$clustering,
+                                 Gene.Clusters = Pseudotime.genes.clusters$clustering,
+                                 q.val = CR.res$qval,
+                                 ABCs= CR.res$ABCs
+                                 ) %>% arrange(Gene.Clusters)
 
-anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"))
-anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(33,67)))
-rownames(anno) <- 1:100
+row.names(CR.Gene.dynamique) <- CR.Gene.dynamique$Gene
+CR.Gene.dynamique$Gene.Clusters <- paste0("Clust.", CR.Gene.dynamique$Gene.Clusters)
 
-p2 <- pheatmap::pheatmap(Smoothed.point.cor,
-         cluster_rows = F,
-         cluster_cols = F,
-         border_color = NA,
-         annotation_row = anno,
-         annotation_col = anno,
-         annotation_colors = anno.colors,
-         show_colnames = F,
-         show_rownames = F,
-         color = colorRampPalette(brewer.pal(n = 10, name = "RdBu"))(100),
-         main = "CR KO vs CR WT euclidian dist",
-         legend = F,
-         annotation_legend =F)
-```
-```{r}
-Smoothed.point.cor <- pdist::pdist(X= scale(t(WT.smooth.curve.matrix[,101:200])),
-                                   Y= scale(t(WT.smooth.curve.matrix[,1:100])))
-
-Smoothed.point.cor <- as.matrix(Smoothed.point.cor)
-rownames(Smoothed.point.cor) <- 1:100
-colnames(Smoothed.point.cor) <- 1:100
-
-anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"))
-anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(33,67)))
-rownames(anno) <- 1:100
-
-p3 <- pheatmap::pheatmap(Smoothed.point.cor,
-         cluster_rows = F,
-         cluster_cols = F,
-         border_color = NA,
-         annotation_row = anno,
-         annotation_col = anno,
-         annotation_colors = anno.colors,
-         show_colnames = F,
-         show_rownames = F,
-         color = colorRampPalette(brewer.pal(n = 10, name = "RdBu"))(100),
-         main = "CR WT vs Pallial WT euclidian dist",
-         legend = F,
-         annotation_legend =F)
-```
-```{r}
-Smoothed.point.cor <- pdist::pdist(X= scale(t(KO.smooth.curve.matrix[,101:200])),
-                                   Y= scale(t(WT.smooth.curve.matrix[,1:100])))
-
-Smoothed.point.cor <- as.matrix(Smoothed.point.cor)
-rownames(Smoothed.point.cor) <- 1:100
-colnames(Smoothed.point.cor) <- 1:100
-
-anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"))
-anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(33,67)))
-rownames(anno) <- 1:100
-
-p4 <- pheatmap::pheatmap(Smoothed.point.cor,
-         cluster_rows = F,
-         cluster_cols = F,
-         border_color = NA,
-         annotation_row = anno,
-         annotation_col = anno,
-         annotation_colors = anno.colors,
-         show_colnames = F,
-         show_rownames = F,
-         color = colorRampPalette(brewer.pal(n = 10, name = "RdBu"))(100),
-         main = "CR KO vs Pallial WT euclidian dist",
-         legend = F,
-         annotation_legend =F)
+write.table(CR.Gene.dynamique, "KO_CR_dynamic_genes.csv", sep = ";", quote = F, row.names = F)
 ```
 
 ```{r}
-Smoothed.point.cor <- pdist::pdist(X= scale(t(WT.smooth.curve.matrix[,101:200])),
-                                   Y= scale(t(WT.smooth.curve.matrix[,101:200])))
+# Order the rows using seriation
+dst <- as.dist((1-cor(scale(t(CR_curve_matrix)), method = "pearson")))
+row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
+gene.order <- rownames(CR_curve_matrix[get_order(row.ser),])
 
-Smoothed.point.cor <- as.matrix(Smoothed.point.cor)
-rownames(Smoothed.point.cor) <- 1:100
-colnames(Smoothed.point.cor) <- 1:100
+# Set annotation colors
+pal <- wes_palette("Darjeeling1")
+anno.colors <- list(lineage = c(Pallial_neurons="#026c9a", Cajal_Retzius="#cc391b"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
 
-anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"))
-anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(33,67)))
-rownames(anno) <- 1:100
 
-p5 <- pheatmap::pheatmap(Smoothed.point.cor,
-         cluster_rows = F,
-         cluster_cols = F,
-         border_color = NA,
-         annotation_row = anno,
-         annotation_col = anno,
-         annotation_colors = anno.colors,
-         show_colnames = F,
-         show_rownames = F,
-         color = colorRampPalette(brewer.pal(n = 10, name = "RdBu"))(100),
-         main = "CR WT vs CR WT euclidian dist",
-         legend = F,
-         annotation_legend =F)
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(300:1,#Pal 
+                                  301:600)], #CR
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(lineage = rep(c("Pallial_neurons","Cajal_Retzius"), each=300)),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
 ```
-
-```{r}
-Smoothed.point.cor <- pdist::pdist(X= scale(t(WT.smooth.curve.matrix[,1:100])),
-                                   Y= scale(t(WT.smooth.curve.matrix[,1:100])))
-
-Smoothed.point.cor <- as.matrix(Smoothed.point.cor)
-rownames(Smoothed.point.cor) <- 1:100
-colnames(Smoothed.point.cor) <- 1:100
-
-anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"))
-anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(33,67)))
-rownames(anno) <- 1:100
-
-p6 <- pheatmap::pheatmap(Smoothed.point.cor,
-         cluster_rows = F,
-         cluster_cols = F,
-         border_color = NA,
-         annotation_row = anno,
-         annotation_col = anno,
-         annotation_colors = anno.colors,
-         show_colnames = F,
-         show_rownames = F,
-         color = colorRampPalette(brewer.pal(n = 10, name = "RdBu"))(100),
-         main = "CP WT vs CP WT euclidian dist",
-         legend = F,
-         annotation_legend =F)
-```
-
-```{r}
-cowplot::plot_grid(p1$gtable, p2$gtable, p3$gtable, p4$gtable, p5$gtable, p6$gtable,
-                   ncol = 2,
-                   align = "v",
-                   rel_heights = c(1,1),
-                   greedy = T)
-```
-
 
 # Session Info
 
