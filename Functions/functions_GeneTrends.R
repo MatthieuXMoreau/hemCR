@@ -6,7 +6,7 @@ trend <- function(Seurat.data,
                   group.by,
                   gene){
   
-  data <- Seurat.data@meta.data %>% select(Lineage, Pseudotime, Phase, orig.ident)
+  data <- Seurat.data@meta.data %>% select(Lineage, Pseudotime, orig.ident)
   data$Gene <- Seurat.data@assays$RNA@data[gene,]
   
   if (group.by == "Lineage") {
@@ -24,6 +24,7 @@ trend <- function(Seurat.data,
       ylim(0,NA) +
       ggtitle(gene)  
   } else {
+    data$Phase <- Seurat.data@meta.data$Phase
     p <- ggplot(data=data, aes(x= Pseudotime, y= Gene)) +
       geom_point(aes(color= Lineage), size=0.5) +
       scale_color_manual(values= c("#cc391b", "#026c9a")) +
