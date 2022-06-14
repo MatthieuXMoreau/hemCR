@@ -387,7 +387,7 @@ p2 <- DimPlot(object = WT.KO.integrated,
 p1 / p2
 ```
 
-```{r Save RDS}
+```{r Save RDS, include=T, eval=FALSE}
 saveRDS(WT.KO.integrated, "./WT_KO.integrated.RDS")
 ```
 
@@ -537,6 +537,7 @@ p4 <- ggplot(KO.Pal, aes(Spring_1, Spring_2)) +
 
 p1 + p2 + p3 + p4
 ```
+
 ```{r}
 p1 <- ggplot(WT.CR, aes(Spring_1, Spring_2)) +
   geom_point(aes(color=Pseudotime.bins), size=2, shape=16)
@@ -674,6 +675,42 @@ p2 <- ggplot(data, aes(x= Pseudotime.bin, y= Distance, color= Trajectory, group 
 
 p1 + p2
 ```
+
+# Plot late neurons lineage markers
+
+```{r}
+WT_KO_LN <- subset(WT_KO_trajectories, subset = Pseudotime.bins %in% c(6,7))
+```
+
+```{r}
+DefaultAssay(WT_KO_LN) <- "RNA"
+
+p1 <- DimPlot(WT_KO_LN,
+        reduction = "integrated_spring",
+        group.by = "Lineage",
+        pt.size = 1,
+        cols = c("#cc391b", "#026c9a")
+        ) + NoAxes()
+
+p2 <- DimPlot(WT_KO_LN,
+        reduction = "integrated_spring",
+        group.by = "orig.ident",
+        pt.size = 1,
+        cols = c("#cc391b", "#026c9a")
+        ) + NoAxes()
+
+p3 <- FeaturePlot(object = WT_KO_LN,
+            features = c("Foxg1", "Zfpm2","Prdm8",
+                         "Reln", "Zic5", "Zfp503"),
+            pt.size = 1,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "integrated_spring",
+            slot = "data",
+            order = T) & NoAxes() & NoLegend()
+
+(p1 + p2) + (p3)
+```
+
 
 # Session Info
 
