@@ -1,0 +1,457 @@
+---
+title: "Comparison between trajectories in the Gmnc WT/KO"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: tibble
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
+
+# To use biomart 
+new_config <- httr::config(ssl_verifypeer = FALSE)
+httr::set_config(new_config, override = FALSE)
+```
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(princurve)
+library(Revelio)
+library(monocle)
+library(gprofiler2)
+library(seriation)
+library(Matrix)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# Load integrated datasets
+
+```{r}
+WT.KO.integrated <- readRDS("WT_KO.integrated.RDS")
+DefaultAssay(WT.KO.integrated) <- "RNA"
+```
+
+
+```{r}
+DimPlot(WT.KO.integrated,
+        reduction = "integrated_spring",
+        group.by = "Lineage",
+        pt.size = 1,
+        cols =   c("#cc391b","#e7823a","#969696","#026c9a")
+        ) + NoAxes()
+```
+
+```{r}
+CPx.data <-  subset(WT.KO.integrated,
+                        subset = Lineage %in% c("Choroid_Plexus") & orig.ident %in% c("Hem1", "Gmnc_KO"))
+
+DimPlot(CPx.data,
+        group.by = "orig.ident",
+        reduction = "integrated_spring",
+        pt.size = 1,
+        cols =  c("#cc391b","#026c9a")
+        ) + NoAxes()
+
+rm(WT.KO.integrated)
+gc()
+```
+# Pseudotime in WT
+
+```{r}
+WT.data <-  subset(CPx.data,
+                   subset = orig.ident =="Hem1")
+```
+
+## Exclude septal cells
+
+```{r}
+FeaturePlot(object = WT.data,
+            features = c("Fgf8", "Fgf17", "Adamts15", "Fgfbp1"),
+            pt.size = 0.5,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "integrated_spring",
+            order = T) & NoAxes() & NoLegend()
+```
+
+```{r}
+WT.data <- AddModuleScore(WT.data,
+                           features = list(c("Fgf8", "Fgf17", "Adamts15", "Fgfbp1")),
+                           ctrl = 10,
+                           name = "Septum")
+
+FeaturePlot(object = WT.data,
+            features = c("Septum1"),
+            pt.size = 1,
+            cols = rev(brewer.pal(10,"Spectral")),
+            reduction = "integrated_spring",
+            order = T) & NoAxes()
+
+WT.data$Septal.prog <- WT.data$Septum1 > 0
+```
+
+
+```{r}
+p1 <- DimPlot(WT.data,
+        reduction = "integrated_spring",
+        group.by = "Septal.prog",
+        pt.size = 1) + NoAxes()
+
+p2 <- FeaturePlot(object = WT.data,
+            features = c("Fgf17"),
+            pt.size = 0.5,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "integrated_spring",
+            order = T) & NoAxes() & NoLegend()
+
+p1 + p2
+```
+
+```{r}
+WT.data<- subset(WT.data,
+                   subset = Septal.prog == FALSE & WT.data$Spring_1 > 1300)
+```
+
+## Fit principal curve
+
+```{r}
+Trajectories.ChP <- WT.data@meta.data %>%
+                    dplyr::select("Barcodes", "Spring_1", "Spring_2")
+
+fit <- principal_curve(as.matrix(Trajectories.ChP[,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=TRUE,
+                       f = 0.8, 
+                       stretch=2)
+
+#The principal curve smoothed
+ChP.pc.line <- as.data.frame(fit$s[order(fit$lambda),]) 
+
+#Pseudotime score
+Trajectories.ChP$Pseudotime <- fit$lambda/max(fit$lambda)
+
+#Inverse the score if positive correlation with progenitor marker
+if (cor(Trajectories.ChP$Pseudotime, WT.data@assays$SCT@data['Hmga2', Trajectories.ChP$Barcodes]) > 0) {
+  Trajectories.ChP$Pseudotime <- -(Trajectories.ChP$Pseudotime - max(Trajectories.ChP$Pseudotime))
+}
+
+WT.data$Pseudotime <- Trajectories.ChP$Pseudotime
+```
+```{r}
+FeaturePlot(object = WT.data,
+            features = "Pseudotime",
+            pt.size = 2,
+            cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
+            reduction = "integrated_spring",
+            order = T) & NoAxes()
+```
+
+
+# Pseudotime in KO
+
+```{r}
+KO.data <-  subset(CPx.data,
+                   subset = orig.ident =="Gmnc_KO")
+```
+
+## Exclude septal cells
+
+```{r}
+FeaturePlot(object = KO.data,
+            features = c("Fgf8", "Fgf17", "Adamts15", "Fgfbp1"),
+            pt.size = 0.5,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "integrated_spring",
+            order = T) & NoAxes() & NoLegend()
+```
+
+```{r}
+KO.data <- AddModuleScore(KO.data,
+                          features = list(c("Fgf8", "Fgf17", "Adamts15", "Fgfbp1")),
+                          ctrl = 10,
+                          name = "Septum")
+
+FeaturePlot(object = KO.data,
+            features = c("Septum1"),
+            pt.size = 1,
+            cols = rev(brewer.pal(10,"Spectral")),
+            reduction = "integrated_spring",
+            order = T) & NoAxes()
+
+KO.data$Septal.prog <- KO.data$Septum1 > 0
+```
+
+
+```{r}
+p1 <- DimPlot(KO.data,
+              reduction = "integrated_spring",
+              group.by = "Septal.prog",
+              pt.size = 1) + NoAxes()
+
+p2 <- FeaturePlot(object = KO.data,
+                  features = c("Fgf17"),
+                  pt.size = 0.5,
+                  cols = c("grey90", brewer.pal(9,"YlGnBu")),
+                  reduction = "integrated_spring",
+                  order = T) & NoAxes() & NoLegend()
+
+p1 + p2
+```
+
+```{r}
+KO.data<- subset(KO.data,
+                 subset = Septal.prog == FALSE & KO.data$Spring_1 > 2000)
+```
+
+## Fit principal curve
+
+```{r}
+Trajectories.ChP <- KO.data@meta.data %>%
+  dplyr::select("Barcodes", "Spring_1", "Spring_2")
+
+fit <- principal_curve(as.matrix(Trajectories.ChP[,c("Spring_1", "Spring_2")]),
+                       smoother='lowess',
+                       trace=TRUE,
+                       f = 0.8, 
+                       stretch=2)
+
+#The principal curve smoothed
+ChP.pc.line <- as.data.frame(fit$s[order(fit$lambda),]) 
+
+#Pseudotime score
+Trajectories.ChP$Pseudotime <- fit$lambda/max(fit$lambda)
+
+#Inverse the score if positive correlation with progenitor marker
+if (cor(Trajectories.ChP$Pseudotime, KO.data@assays$SCT@data['Hmga2', Trajectories.ChP$Barcodes]) > 0) {
+  Trajectories.ChP$Pseudotime <- -(Trajectories.ChP$Pseudotime - max(Trajectories.ChP$Pseudotime))
+}
+
+KO.data$Pseudotime <- Trajectories.ChP$Pseudotime
+```
+```{r}
+FeaturePlot(object = KO.data,
+            features = "Pseudotime",
+            pt.size = 2,
+            cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
+            reduction = "integrated_spring",
+            order = T) & NoAxes()
+```
+
+# Subset the full integrated dataset
+
+```{r}
+Trajectories <- rbind(WT.data@meta.data %>% select(Barcodes, Pseudotime), KO.data@meta.data %>% select(Barcodes, Pseudotime))
+```
+
+
+```{r}
+WT.KO.integrated <- readRDS("WT_KO.integrated.RDS")
+
+meta.data <- WT.KO.integrated@meta.data[Trajectories$Barcodes,]
+meta.data$Pseudotime <- Trajectories$Pseudotime
+```
+
+```{r}
+WT.KO.integrated <- CreateSeuratObject(counts = WT.KO.integrated@assays$RNA@counts[, Trajectories$Barcodes],
+                                       meta.data = meta.data)
+
+spring <- as.matrix(WT.KO.integrated@meta.data %>% select("Integrated_Spring_1", "Integrated_Spring_2"))
+  
+WT.KO.integrated[["integrated_spring"]] <- CreateDimReducObject(embeddings = spring, key = "Spring_", assay = DefaultAssay(WT.KO.integrated))
+```
+
+```{r}
+p1 <- FeaturePlot(object = WT.KO.integrated,
+            features = "Pseudotime",
+            pt.size = 0.5,
+            cols = rev(colorRampPalette(brewer.pal(n =11, name = "Spectral"))(100)),
+            reduction = "integrated_spring",
+            order = T) & NoAxes()
+
+p2 <- DimPlot(object = WT.KO.integrated,
+        group.by = "orig.ident",
+        pt.size = 0.5,
+        reduction = "integrated_spring",
+        cols =  c("#cc391b", "#026c9a")) & NoAxes()
+
+
+p1 + p2
+```
+
+## Normalization
+
+```{r}
+WT.KO.integrated <- NormalizeData(WT.KO.integrated, normalization.method = "LogNormalize", scale.factor = 10000, assay = "RNA")
+```
+
+```{r}
+WT.KO.integrated <- FindVariableFeatures(WT.KO.integrated, selection.method = "disp", nfeatures = 6500, assay = "RNA")
+```
+
+## Plot some genes along pseudotime
+
+```{r fig.dim=c(15,9), warning=FALSE}
+source("../Functions/functions_GeneTrends.R")
+
+Plot.Genes.trend(Seurat.data= WT.KO.integrated,
+                 group.by = "Genotype",
+                 genes= c("Ttr","Htr2c", "Gmnc", "Trp73", "Foxj1", "Pifo", "Ccdc67"))
+```
+
+# Use monocle2 to model gene expression along cycling axis
+
+```{r}
+rm(list = ls()[!ls() %in% c("WT.KO.integrated")])
+gc()
+```
+
+### Initialize a monocle object
+
+```{r}
+# Transfer metadata
+Annot.data  <- new('AnnotatedDataFrame',
+                   data = data.frame(Barcode= WT.KO.integrated$Barcodes,
+                                     Lineage= WT.KO.integrated$Lineage,
+                                     Pseudotime= WT.KO.integrated$Pseudotime,
+                                     Genotype= WT.KO.integrated$orig.ident))
+
+# Transfer counts data
+var.genes <- WT.KO.integrated[["RNA"]]@var.features
+
+feature.data <- new('AnnotatedDataFrame',
+                    data = data.frame(gene_short_name = rownames(WT.KO.integrated[["RNA"]]@counts[var.genes,]),
+                                      row.names = rownames(WT.KO.integrated[["RNA"]]@counts[var.genes,])))
+
+# Create the CellDataSet object including variable genes only
+gbm_cds <- newCellDataSet(WT.KO.integrated[["RNA"]]@counts[var.genes,],
+                              phenoData = Annot.data,
+                              featureData = feature.data,
+                              lowerDetectionLimit = 0,
+                              expressionFamily = negbinomial())
+```
+
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+gbm_cds <- estimateSizeFactors(gbm_cds)
+gbm_cds <- estimateDispersions(gbm_cds)
+gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
+```
+
+```{r}
+rm(list = ls()[!ls() %in% c("WT.KO.integrated", "gbm_cds")])
+gc()
+```
+# Plot WT CR dynamic genes along WT and KO trajectories
+
+```{r cache=TRUE}
+# Load WT CPx variable genes along pseudotime
+WT.CPx.genes <- read.table("../ChoroidPlexus_trajectory/ChP.Gene.dynamique.csv", sep = ";", header = T)
+
+# Create a new pseudotime vector of 300 points
+nPoints <- 300
+
+new_data = list()
+for (Genotype in unique(WT.KO.integrated$orig.ident)){
+  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(WT.KO.integrated$Pseudotime), max(WT.KO.integrated$Pseudotime), length.out = nPoints), Genotype= Genotype)
+}
+
+new_data = do.call(rbind, new_data)
+
+# Smooth gene expression
+Diff.curve_matrix <- genSmoothCurves(gbm_cds[WT.CR.genes$Gene, ],
+                                      trend_formula = "~sm.ns(Pseudotime, df = 3)*Genotype",
+                                      relative_expr = TRUE,
+                                      new_data = new_data,
+                                      cores= parallel::detectCores() - 2)
+```
+
+```{r}
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Diff.curve_matrix[,301:600]),method = "pearson"))), k= 5)
+
+CPx.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
+                                Waves= Pseudotime.genes.clusters$clustering,
+                                Gene.Clusters = Pseudotime.genes.clusters$clustering) %>% arrange(Gene.Clusters)
+
+row.names(CPx.Gene.dynamique) <- CPx.Gene.dynamique$Gene
+CPx.Gene.dynamique$Gene.Clusters <- paste0("Clust.", CPx.Gene.dynamique$Gene.Clusters)
+```
+
+```{r}
+# Order the rows using seriation
+dst <- as.dist((1-cor(scale(t(Diff.curve_matrix[,301:600])), method = "pearson")))
+row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
+gene.order <- rownames(Diff.curve_matrix[,301:600][get_order(row.ser),])
+
+# Set annotation colors
+pal <- wes_palette("Darjeeling1")
+anno.colors <- list(lineage = c(Gmnc_KO="#026c9a", Gmnc_WT="#cc391b"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
+
+
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(300:1,#KO 
+                                  301:600)], #WT
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+```
+
+```{r}
+gene.order <- gene.order[c(382:622,1:381)]
+
+heatmap.gene <- pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                    c(300:1,#Pal 
+                                      301:600)], #CR
+                       scale = "row",
+                       cluster_rows = F,
+                       cluster_cols = F,
+                       annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                       annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
+                       annotation_colors = anno.colors,
+                       show_colnames = F,
+                       gaps_col = c(200,400),
+                       show_rownames = F,
+                       fontsize_row = 8,
+                       color =  viridis::viridis(9),
+                       breaks = seq(-2.5,2.5, length.out = 9),
+                       main = "WT CR enriched genes along GmncKO and GmncWT CR trajectories")
+```
+
+
+# Session Info
+
+```{r}
+#date
+format(Sys.time(), "%d %B, %Y, %H,%M")
+
+#Packages used
+sessionInfo()
+```
