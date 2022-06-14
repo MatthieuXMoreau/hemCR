@@ -903,6 +903,11 @@ cowplot::plot_grid(heatmap.states$gtable, heatmap.gene$gtable,
                    align = "v",
                    rel_heights = c(1,3),
                    greedy = T)
+
+ggsave("~/Bureau/Fig4_MM/Heatmap_WT-CR.pdf",
+       width = 15, height = 9,
+       device = "pdf",
+       dpi = "retina")
 ```
 
 ### Gene cluster trend
@@ -915,6 +920,11 @@ Plot.clust.trends(Neuro.trajectories,
                    Which.cluster = 1:5,
                    clust.list = Pseudotime.genes.clusters$clustering,
                    Smooth.method = "gam")
+
+ggsave("~/Bureau/Fig4_MM/WT-CR_Cluster_trend.pdf",
+       width = 15, height = 9,
+       device = "pdf",
+       dpi = "retina")
 ```
 
 ### GO term enrichment in gene clusters using gprofiler2
