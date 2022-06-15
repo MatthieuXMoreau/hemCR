@@ -315,7 +315,7 @@ source("../Functions/functions_GeneTrends.R")
 
 Plot.Genes.trend(Seurat.data= WT.KO.integrated,
                  group.by = "Genotype",
-                 genes= c("Ttr","Htr2c", "Gmnc", "Trp73", "Foxj1", "Pifo", "Ccdc67"))
+                 genes= c("Nasp","Ttr","Htr2c", "Gmnc", "Trp73", "Foxj1", "Pifo", "Ccdc67"))
 ```
 
 # Use monocle2 to model gene expression along cycling axis
@@ -336,14 +336,12 @@ Annot.data  <- new('AnnotatedDataFrame',
                                      Genotype= WT.KO.integrated$orig.ident))
 
 # Transfer counts data
-var.genes <- WT.KO.integrated[["RNA"]]@var.features
-
 feature.data <- new('AnnotatedDataFrame',
-                    data = data.frame(gene_short_name = rownames(WT.KO.integrated[["RNA"]]@counts[var.genes,]),
-                                      row.names = rownames(WT.KO.integrated[["RNA"]]@counts[var.genes,])))
+                    data = data.frame(gene_short_name = rownames(WT.KO.integrated[["RNA"]]@counts),
+                                      row.names = rownames(WT.KO.integrated[["RNA"]]@counts)))
 
 # Create the CellDataSet object including variable genes only
-gbm_cds <- newCellDataSet(WT.KO.integrated[["RNA"]]@counts[var.genes,],
+gbm_cds <- newCellDataSet(WT.KO.integrated[["RNA"]]@counts,
                               phenoData = Annot.data,
                               featureData = feature.data,
                               lowerDetectionLimit = 0,
@@ -367,7 +365,7 @@ gc()
 WT.CPx.genes <- read.table("../ChoroidPlexus_trajectory/ChP.Gene.dynamique.csv", sep = ";", header = T)
 
 # Create a new pseudotime vector of 300 points
-nPoints <- 300
+nPoints <- 100
 
 new_data = list()
 for (Genotype in unique(WT.KO.integrated$orig.ident)){
@@ -377,7 +375,7 @@ for (Genotype in unique(WT.KO.integrated$orig.ident)){
 new_data = do.call(rbind, new_data)
 
 # Smooth gene expression
-Diff.curve_matrix <- genSmoothCurves(gbm_cds[WT.CR.genes$Gene, ],
+Diff.curve_matrix <- genSmoothCurves(gbm_cds[WT.CPx.genes$Gene, ],
                                       trend_formula = "~sm.ns(Pseudotime, df = 3)*Genotype",
                                       relative_expr = TRUE,
                                       new_data = new_data,
@@ -385,21 +383,10 @@ Diff.curve_matrix <- genSmoothCurves(gbm_cds[WT.CR.genes$Gene, ],
 ```
 
 ```{r}
-Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Diff.curve_matrix[,301:600]),method = "pearson"))), k= 5)
-
-CPx.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
-                                Waves= Pseudotime.genes.clusters$clustering,
-                                Gene.Clusters = Pseudotime.genes.clusters$clustering) %>% arrange(Gene.Clusters)
-
-row.names(CPx.Gene.dynamique) <- CPx.Gene.dynamique$Gene
-CPx.Gene.dynamique$Gene.Clusters <- paste0("Clust.", CPx.Gene.dynamique$Gene.Clusters)
-```
-
-```{r}
 # Order the rows using seriation
-dst <- as.dist((1-cor(scale(t(Diff.curve_matrix[,301:600])), method = "pearson")))
+dst <- as.dist((1-cor(scale(t(Diff.curve_matrix[,1:100])), method = "pearson")))
 row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
-gene.order <- rownames(Diff.curve_matrix[,301:600][get_order(row.ser),])
+gene.order <- rownames(Diff.curve_matrix[,1:100][get_order(row.ser),])
 
 # Set annotation colors
 pal <- wes_palette("Darjeeling1")
@@ -408,43 +395,105 @@ anno.colors <- list(lineage = c(Gmnc_KO="#026c9a", Gmnc_WT="#cc391b"),
 
 
 pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                c(300:1,#KO 
-                                  301:600)], #WT
+                                c(200:101,#KO 
+                                  1:100)], #WT
                    scale = "row",
                    cluster_rows = F,
                    cluster_cols = F,
-                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
+                   annotation_row = WT.CPx.genes  %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=100)),
                    annotation_colors = anno.colors,
                    show_colnames = F,
                    show_rownames = F,
                    fontsize_row = 8,
+                   border_color = NA,
                    color =  viridis::viridis(9),
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
 ```
 
+## TF only
+
 ```{r}
-gene.order <- gene.order[c(382:622,1:381)]
+TFs <- read.table("TF.csv", sep = ";")[,1]
+
+gene.order <- gene.order[gene.order %in% TFs]
 
 heatmap.gene <- pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                    c(300:1,#Pal 
-                                      301:600)], #CR
+                                c(200:101,#KO 
+                                  1:100)], #WT
                        scale = "row",
                        cluster_rows = F,
                        cluster_cols = F,
-                       annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                       annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
+                       annotation_row = WT.CPx.genes %>% dplyr::select(Gene.Clusters),
+                       annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=100)),
                        annotation_colors = anno.colors,
                        show_colnames = F,
-                       gaps_col = c(200,400),
                        show_rownames = F,
                        fontsize_row = 8,
+                       border_color = NA,
                        color =  viridis::viridis(9),
                        breaks = seq(-2.5,2.5, length.out = 9),
-                       main = "WT CR enriched genes along GmncKO and GmncWT CR trajectories")
+                       main = "WT CPx dynamic genes along GmncWT trajectories")
 ```
 
+```{r fig.dim=c(15,9), warning=FALSE}
+source("../Functions/functions_GeneTrends.R")
+
+Plot.Genes.trend(Seurat.data= WT.KO.integrated,
+                 group.by = "Genotype",
+                 genes= c("Gmnc", "Trp73", "E2f7", "Foxj1", "Irx5", "Carhsp1", "Foxa2", "Sox9", "Pou3f2", "Myb", 
+                          "Plagl1", "Prdm16", "Aebp1"))
+```
+
+# KO dynamic genes along pseudotime
+
+## Find DEG in the KO
+
+```{r cache=TRUE}
+KO.pData <- pData(gbm_cds) %>% subset(Genotype == "Gmnc_KO")
+
+pseudo.maturation.diff <- differentialGeneTest(gbm_cds[WT.KO.integrated[["RNA"]]@var.features, KO.pData$Barcode], 
+                                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)",
+                                                 cores = parallel::detectCores() - 2)
+
+# Filter genes based on FDR
+pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-30)
+```
+
+```{r cache=TRUE}
+# Create a new pseudo-DV vector of 300 points
+nPoints <- 100
+
+new_data = list()
+for (Lineage in unique(KO.pData$Lineage)){
+  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(KO.pData$Pseudotime), max(KO.pData$Pseudotime), length.out = nPoints), Lineage=Lineage)
+}
+
+new_data = do.call(rbind, new_data)
+
+# Smooth gene expression
+Diff.curve_matrix <- genSmoothCurves(gbm_cds[as.character(pseudo.maturation.diff.filtered$gene_short_name), KO.pData$Barcode],
+                                      trend_formula = "~sm.ns(Pseudotime, df = 3)",
+                                      relative_expr = TRUE,
+                                      new_data = new_data,
+                                      cores= parallel::detectCores() - 2)
+```
+
+```{r}
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Diff.curve_matrix),method = "pearson"))), k= 5)
+
+KO_CPx_Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
+                                     Waves= Pseudotime.genes.clusters$clustering,
+                                     Gene.Clusters = Pseudotime.genes.clusters$clustering,
+                                     q.val = pseudo.maturation.diff.filtered$qval
+                                     ) %>% arrange(Gene.Clusters)
+
+row.names(KO_CPx_Gene.dynamique) <- KO_CPx_Gene.dynamique$Gene
+KO_CPx_Gene.dynamique$Gene.Clusters <- paste0("Clust.", KO_CPx_Gene.dynamique$Gene.Clusters)
+
+write.table(KO_CPx_Gene.dynamique, "KO_CPx_dynamic_genes.csv", sep = ";", quote = F, row.names = F)
+```
 
 # Session Info
 
