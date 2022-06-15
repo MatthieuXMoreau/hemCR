@@ -1001,7 +1001,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                    main = "")
 ```
 
-```{r eval=FALSE}
+```{r}
 pheatmap::pheatmap(Diff.curve_matrix[gene.order[c(235:1,292:236)],
                                 c(300:1,#Pal 
                                   301:600)], #CR
