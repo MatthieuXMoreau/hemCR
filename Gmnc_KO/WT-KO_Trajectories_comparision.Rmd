@@ -945,7 +945,7 @@ heatmap.gene <- pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                        breaks = seq(-2.5,2.5, length.out = 9),
                        main = "WT CR enriched genes along GmncKO and GmncWT CR trajectories")
 
-pdf("~/Bureau/Fig4_MM/heatmap_Fig2Genes_WT-KO.pdf", width=5, height=5)
+pdf("~/Bureau/Fig4_MM/heatmap_Fig4Genes_WT-KO.pdf", width=10, height=5)
 grid::grid.newpage()
 grid::grid.draw(heatmap.gene$gtable)
 dev.off()
