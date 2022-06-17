@@ -40,6 +40,7 @@ library(ggplot2)
 library(ggExtra)
 library(cowplot)
 library(wesanderson)
+library(UpSetR)
 
 #Set ggplot theme as classic
 theme_set(theme_classic())
@@ -688,200 +689,6 @@ gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
 rm(list = ls()[!ls() %in% c("WT.KO.integrated", "gbm_cds")])
 gc()
 ```
-
-# Plot WT CR dynamic genes along WT and KO trajectories
-
-## All CR enriched genes identified in the WT dataset
-
-```{r cache=TRUE}
-# Load WT CR variable genes along pseudotime
-WT.CR.genes <- read.table("../CajalRetzius_trajectory/CR_dynamic_genes.csv", sep = ";", header = T)
-
-# Extract CR lineage in both genotypes
-CR.pData <- pData(gbm_cds) %>% subset(Lineage == "Cajal-Retzius_neurons")
-
-# Create a new pseudotime vector of 300 points
-nPoints <- 300
-
-new_data = list()
-for (Genotype in unique(CR.pData$Genotype)){
-  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(CR.pData$Pseudotime), max(CR.pData$Pseudotime), length.out = nPoints), Genotype= Genotype)
-}
-
-new_data = do.call(rbind, new_data)
-
-# Smooth gene expression
-Diff.curve_matrix <- genSmoothCurves(gbm_cds[WT.CR.genes$Gene, CR.pData$Barcode],
-                                      trend_formula = "~sm.ns(Pseudotime, df = 3)*Genotype",
-                                      relative_expr = TRUE,
-                                      new_data = new_data,
-                                      cores= parallel::detectCores() - 2)
-```
-
-```{r}
-Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Diff.curve_matrix[,301:600]),method = "pearson"))), k= 5)
-
-CR.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
-                                Waves= Pseudotime.genes.clusters$clustering,
-                                Gene.Clusters = Pseudotime.genes.clusters$clustering) %>% arrange(Gene.Clusters)
-
-row.names(CR.Gene.dynamique) <- CR.Gene.dynamique$Gene
-CR.Gene.dynamique$Gene.Clusters <- paste0("Clust.", CR.Gene.dynamique$Gene.Clusters)
-```
-
-```{r}
-# Order the rows using seriation
-dst <- as.dist((1-cor(scale(t(Diff.curve_matrix[,301:600])), method = "pearson")))
-row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
-gene.order <- rownames(Diff.curve_matrix[,301:600][get_order(row.ser),])
-
-# Set annotation colors
-pal <- wes_palette("Darjeeling1")
-anno.colors <- list(lineage = c(Gmnc_KO="#026c9a", Gmnc_WT="#cc391b"),
-                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
-
-
-pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                c(300:1,#KO 
-                                  301:600)], #WT
-                   scale = "row",
-                   cluster_rows = F,
-                   cluster_cols = F,
-                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
-                   annotation_colors = anno.colors,
-                   show_colnames = F,
-                   show_rownames = F,
-                   fontsize_row = 8,
-                   border_color = NA,
-                   color =  viridis::viridis(9),
-                   breaks = seq(-2.5,2.5, length.out = 9),
-                   main = "")
-```
-```{r}
-gene.order <- gene.order[c(382:622,1:381)]
-
-heatmap.gene <- pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                    c(300:1,#Pal 
-                                      301:600)], #CR
-                       scale = "row",
-                       cluster_rows = F,
-                       cluster_cols = F,
-                       annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                       annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
-                       annotation_colors = anno.colors,
-                       show_colnames = F,
-                       gaps_col = c(200,400),
-                       show_rownames = F,
-                       fontsize_row = 8,
-                       border_color = NA,
-                       color =  viridis::viridis(9),
-                       breaks = seq(-2.5,2.5, length.out = 9),
-                       main = "WT CR enriched genes along GmncKO and GmncWT CR trajectories")
-
-pdf("~/Bureau/Fig4_MM/heatmap_Fig2Genes_WT-KO.pdf", width=5, height=5)
-grid::grid.newpage()
-grid::grid.draw(heatmap.gene$gtable)
-dev.off()
-```
-
-```{r}
-anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
-                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
-
-col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(100,200)))
-rownames(col.anno) <- 301:600
-
-pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                c(301:600)], #CR
-                   scale = "row",
-                   cluster_rows = F,
-                   cluster_cols = F,
-                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   annotation_col = col.anno,
-                   annotation_colors = anno.colors,
-                   gaps_col = 100,
-                   show_colnames = F,
-                   show_rownames = F,
-                   fontsize_row = 8,
-                   border_color = NA,
-                   color =  viridis::viridis(9),
-                   breaks = seq(-2.5,2.5, length.out = 9),
-                   main = "WT CR enriched genes along GmncKO and GmncWT CR trajectories")
-```
-```{r}
-anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
-                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
-
-pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                c(1:300)], #CR
-                   scale = "row",
-                   cluster_rows = F,
-                   cluster_cols = F,
-                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   annotation_col = data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(100,200))),
-                   annotation_colors = anno.colors,
-                   show_colnames = F,
-                   show_rownames = F,
-                   gaps_col = 100,
-                   fontsize_row = 8,
-                   border_color = NA,
-                   color =  viridis::viridis(9),
-                   breaks = seq(-2.5,2.5, length.out = 9),
-                   main = "WT CR enriched genes along GmncKO CR trajectories")
-```
-
-```{r warning=FALSE}
-CR <- WT.KO.integrated@meta.data %>% filter(Lineage == "Cajal-Retzius_neurons") %>% select(Barcodes,Pseudotime,orig.ident)
-
-CR.genes <- as.data.frame(t(WT.KO.integrated@assays$RNA@data[c("Gmnc","Trp73", "Lhx1", "Barhl2"),CR$Barcodes]))
-CR.genes$Pseudotime <- CR$Pseudotime
-CR.genes$Genotype <- factor(CR$orig.ident, levels = c("Hem1", "Gmnc_KO") ) 
-
-CR.genes  <- reshape2::melt(CR.genes, id = c("Pseudotime", "Genotype"))
-
-
-ggplot(CR.genes, aes(x= Pseudotime, y= value)) +
-  geom_smooth(method="loess", n= 50, aes(color= variable, linetype= Genotype)) +
-  scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],wes_palette("FantasticFox1")[5])) +
-  ylim(0,NA)
-
-ggsave("~/Bureau/Fig4_MM/Medial-CR_Genes-trend_WT-KO.pdf",
-       width = 5, height = 2,
-       device = "pdf",
-       dpi = "retina")
-```
-
-## TF only
-
-```{r}
-# Set annotation colors
-pal <- wes_palette("Darjeeling1")
-anno.colors <- list(lineage = c(Gmnc_KO="#026c9a", Gmnc_WT="#cc391b"),
-                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
-
-TFs <- read.table("TF.csv", sep = ";")[,1]
-
-gene.order <- gene.order[gene.order %in% TFs]
-
-heatmap.gene <- pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                c(300:1,#KO 
-                                  301:600)], #WT
-                       scale = "row",
-                       cluster_rows = F,
-                       cluster_cols = F,
-                       annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                       annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
-                       annotation_colors = anno.colors,
-                       show_colnames = F,
-                       show_rownames = T,
-                       fontsize_row = 8,
-                       border_color = NA,
-                       color =  viridis::viridis(9),
-                       breaks = seq(-2.5,2.5, length.out = 9),
-                       main = "WT CR dynamic TFs along GmncWT and KO trajectories")
-```
-
 # DEG genes in the KO
 
 ## Find DEG in the KO
@@ -982,23 +789,6 @@ gene.order <- rownames(CR_curve_matrix[get_order(row.ser),])
 pal <- wes_palette("Darjeeling1")
 anno.colors <- list(lineage = c(KO_Pallial_neurons="#026c9a", KO_Cajal_Retzius="#cc391b"),
                     Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
-
-
-pheatmap::pheatmap(Diff.curve_matrix[gene.order,
-                                c(300:1,#Pal 
-                                  301:600)], #CR
-                   scale = "row",
-                   cluster_rows = F,
-                   cluster_cols = F,
-                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
-                   annotation_col = data.frame(lineage = rep(c("KO_Pallial_neurons","KO_Cajal_Retzius"), each=300)),
-                   annotation_colors = anno.colors,
-                   show_colnames = F,
-                   show_rownames = F,
-                   fontsize_row = 8,
-                   color =  viridis::viridis(9),
-                   breaks = seq(-2.5,2.5, length.out = 9),
-                   main = "")
 ```
 
 ```{r}
@@ -1011,12 +801,252 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order[c(235:1,292:236)],
                    annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
                    annotation_col = data.frame(lineage = rep(c("KO_Pallial_neurons","KO_Cajal_Retzius"), each=300)),
                    annotation_colors = anno.colors,
+                   gaps_col = c(200,400),
                    show_colnames = F,
                    show_rownames = F,
                    fontsize_row = 8,
                    color =  viridis::viridis(9),
                    breaks = seq(-2.5,2.5, length.out = 9),
                    main = "")
+```
+
+# Intersect dynamical genes in CPx and CR in WT and KO
+
+```{r}
+WT.CR <- read.table("../CajalRetzius_trajectory/CR_dynamic_genes.csv", sep = ";", header = T)
+WT.CPx <- read.table("../ChoroidPlexus_trajectory/ChP.Gene.dynamique.csv", sep = ";", header = T)
+
+KO.CR <- read.table("./KO_CR_dynamic_genes.csv", sep = ";", header = T)
+KO.CPx <- read.table("./KO_CPx_dynamic_genes.csv", sep = ";", header = T)
+
+listInput <- list(WT.CR= WT.CR$Gene, WT.CPx= WT.CPx$Gene, KO.CR= KO.CR$Gene, KO.CPx= KO.CPx$Gene)
+```
+
+```{r}
+upset(fromList(listInput),
+      order.by = "freq",
+      queries = list(list(query = intersects, params = list("WT.CR", "WT.CPx"), color = "orange", active = T),
+                     list(query = intersects, params = list("WT.CPx", "KO.CR", "WT.CR"), color = "red", active = T),
+                     list(query = intersects, params = list("KO.CR", "WT.CR"), color = "blue", active = T)))
+```
+```{r}
+upset(fromList(listInput),
+      order.by = "freq",
+      intersections = list(list("WT.CR", "WT.CPx"),
+                           list("KO.CR", "WT.CR"),
+                           list("WT.CPx", "KO.CR", "WT.CR")),
+      queries = list(list(query = intersects, params = list("WT.CR", "WT.CPx"), color = "orange", active = T),
+                     list(query = intersects, params = list("WT.CPx", "KO.CR", "WT.CR"), color = "red", active = T),
+                     list(query = intersects, params = list("KO.CR", "WT.CR"), color = "blue", active = T))
+      )
+```
+
+```{r}
+# Shared genes before Gmnc induction
+WT.CR.anteGmnc <- WT.CR %>% filter(Waves %in% c(1,3)) %>% pull(Gene)
+KO.CR.anteGmnc <- KO.CR %>% filter(Waves %in% c(2,3,5)) %>% pull(Gene)
+
+gene.list <- list(WT.CR = WT.CR.anteGmnc, KO.CR = KO.CR.anteGmnc)
+ggvenn::ggvenn(gene.list)
+```
+
+
+```{r}
+# Shared genes after Gmnc induction
+WT.CR.postGmnc  <- WT.CR %>% filter(Waves %in% c(2,5,4)) %>% pull(Gene)
+KO.CR.postGmnc <- KO.CR %>% filter(Waves %in% c(1,4)) %>% pull(Gene)
+
+
+gene.list <- list(WT.CR = WT.CR.postGmnc, KO.CR = KO.CR.postGmnc)
+ggvenn::ggvenn(gene.list)
+
+```
+
+
+# Plot WT CR dynamic genes along WT and KO trajectories
+
+## All CR enriched genes identified in the WT dataset
+
+```{r cache=TRUE}
+# Load WT CR variable genes along pseudotime
+WT.CR.genes <- read.table("../CajalRetzius_trajectory/CR_dynamic_genes.csv", sep = ";", header = T)
+
+# Extract CR lineage in both genotypes
+CR.pData <- pData(gbm_cds) %>% subset(Lineage == "Cajal-Retzius_neurons")
+
+# Create a new pseudotime vector of 300 points
+nPoints <- 300
+
+new_data = list()
+for (Genotype in unique(CR.pData$Genotype)){
+  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(CR.pData$Pseudotime), max(CR.pData$Pseudotime), length.out = nPoints), Genotype= Genotype)
+}
+
+new_data = do.call(rbind, new_data)
+
+# Smooth gene expression
+Diff.curve_matrix <- genSmoothCurves(gbm_cds[WT.CR.genes$Gene, CR.pData$Barcode],
+                                      trend_formula = "~sm.ns(Pseudotime, df = 3)*Genotype",
+                                      relative_expr = TRUE,
+                                      new_data = new_data,
+                                      cores= parallel::detectCores() - 2)
+```
+
+```{r}
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Diff.curve_matrix[,301:600]),method = "pearson"))), k= 5)
+
+CR.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
+                                Waves= Pseudotime.genes.clusters$clustering,
+                                Gene.Clusters = Pseudotime.genes.clusters$clustering,
+                                WT.CR_and_KO.CR = ifelse(listInput$WT.CR %in% listInput$KO.CR,
+                                                         "Shared", "Not.Shared"),
+                                WT.CR_and_WT.CPx_only = ifelse(listInput$WT.CR %in% listInput$WT.CPx & !listInput$WT.CR %in% listInput$KO.CR,
+                                                               "Shared", "Not.Shared")
+                                ) %>% arrange(Gene.Clusters)
+
+row.names(CR.Gene.dynamique) <- CR.Gene.dynamique$Gene
+CR.Gene.dynamique$Gene.Clusters <- paste0("Clust.", CR.Gene.dynamique$Gene.Clusters)
+```
+
+```{r }
+# Order the rows using seriation
+dst <- as.dist((1-cor(scale(t(Diff.curve_matrix[,301:600])), method = "pearson")))
+row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
+gene.order <- rownames(Diff.curve_matrix[,301:600][get_order(row.ser),])
+
+# Set annotation colors
+pal <- wes_palette("Darjeeling1")
+anno.colors <- list(lineage = c(Gmnc_KO="#026c9a", Gmnc_WT="#cc391b"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]),
+                    WT.CR_and_WT.CPx = c(Shared = pal[2], Not.Shared=pal[3]),
+                    WT.CR_and_WT.CPx_only= c(Shared = pal[2], Not.Shared=pal[3]))
+
+gene.order <- gene.order[c(382:622,1:381)]
+```
+
+
+```{r }
+heatmap.gene <- pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                    c(300:1,#Pal 
+                                      301:600)], #CR
+                       scale = "row",
+                       cluster_rows = F,
+                       cluster_cols = F,
+                       annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters, WT.CR_and_KO.CR, WT.CR_and_WT.CPx_only),
+                       annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
+                       annotation_colors = anno.colors,
+                       show_colnames = F,
+                       gaps_col = c(200,400),
+                       gaps_row = c(233),
+                       show_rownames = T,
+                       fontsize_row = 8,
+                       border_color = NA,
+                       color =  viridis::viridis(9),
+                       breaks = seq(-2.5,2.5, length.out = 9),
+                       main = "WT CR enriched genes along GmncKO and GmncWT CR trajectories")
+
+pdf("~/Bureau/Fig4_MM/heatmap_Fig2Genes_WT-KO.pdf", width=5, height=5)
+grid::grid.newpage()
+grid::grid.draw(heatmap.gene$gtable)
+dev.off()
+```
+
+```{r}
+anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
+
+col.anno <- data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(100,200)))
+rownames(col.anno) <- 301:600
+
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(301:600)], #CR
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = col.anno,
+                   annotation_colors = anno.colors,
+                   gaps_col = 100,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   border_color = NA,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "WT CR enriched genes along GmncKO and GmncWT CR trajectories")
+```
+
+```{r}
+anno.colors <- list(Cell.state = c(Cycling_RG="#046c9a", Differentiating_cells="#ebcb2e"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
+
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(1:300)], #CR
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_col = data.frame(Cell.state = rep(c("Cycling_RG","Differentiating_cells"), c(100,200))),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = F,
+                   gaps_col = 100,
+                   fontsize_row = 8,
+                   border_color = NA,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "WT CR enriched genes along GmncKO CR trajectories")
+```
+
+```{r warning=FALSE}
+CR <- WT.KO.integrated@meta.data %>% filter(Lineage == "Cajal-Retzius_neurons") %>% select(Barcodes,Pseudotime,orig.ident)
+
+CR.genes <- as.data.frame(t(WT.KO.integrated@assays$RNA@data[c("Gmnc","Trp73", "Lhx1", "Barhl2"),CR$Barcodes]))
+CR.genes$Pseudotime <- CR$Pseudotime
+CR.genes$Genotype <- factor(CR$orig.ident, levels = c("Hem1", "Gmnc_KO") ) 
+
+CR.genes  <- reshape2::melt(CR.genes, id = c("Pseudotime", "Genotype"))
+
+
+ggplot(CR.genes, aes(x= Pseudotime, y= value)) +
+  geom_smooth(method="loess", n= 50, aes(color= variable, linetype= Genotype)) +
+  scale_color_manual(values= c(wes_palette("FantasticFox1")[1:3],wes_palette("FantasticFox1")[5])) +
+  ylim(0,NA)
+
+ggsave("~/Bureau/Fig4_MM/Medial-CR_Genes-trend_WT-KO.pdf",
+       width = 5, height = 2,
+       device = "pdf",
+       dpi = "retina")
+```
+
+## TF only
+
+```{r}
+# Set annotation colors
+pal <- wes_palette("Darjeeling1")
+anno.colors <- list(lineage = c(Gmnc_KO="#026c9a", Gmnc_WT="#cc391b"),
+                    Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
+
+TFs <- read.table("TF.csv", sep = ";")[,1]
+
+gene.order <- gene.order[gene.order %in% TFs]
+
+heatmap.gene <- pheatmap::pheatmap(Diff.curve_matrix[gene.order,
+                                c(300:1,#KO 
+                                  301:600)], #WT
+                       scale = "row",
+                       cluster_rows = F,
+                       cluster_cols = F,
+                       annotation_row = CR.Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                       annotation_col = data.frame(lineage = rep(c("Gmnc_KO","Gmnc_WT"), each=300)),
+                       annotation_colors = anno.colors,
+                       show_colnames = F,
+                       show_rownames = T,
+                       fontsize_row = 8,
+                       border_color = NA,
+                       color =  viridis::viridis(9),
+                       breaks = seq(-2.5,2.5, length.out = 9),
+                       main = "WT CR dynamic TFs along GmncWT and KO trajectories")
 ```
 
 
