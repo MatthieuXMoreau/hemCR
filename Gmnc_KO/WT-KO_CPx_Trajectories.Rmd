@@ -495,6 +495,32 @@ KO_CPx_Gene.dynamique$Gene.Clusters <- paste0("Clust.", KO_CPx_Gene.dynamique$Ge
 write.table(KO_CPx_Gene.dynamique, "KO_CPx_dynamic_genes.csv", sep = ";", quote = F, row.names = F)
 ```
 
+```{r}
+# Order the rows using seriation
+dst <- as.dist((1-cor(scale(t(Diff.curve_matrix)), method = "pearson")))
+row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
+gene.order <- rev(rownames(Diff.curve_matrix[get_order(row.ser),]))
+
+# Set annotation colors
+pal <- wes_palette("Darjeeling1")
+anno.colors <- list(Gene.Clusters = c(Clust.1 =pal[1] , Clust.2=pal[2], Clust.3=pal[3], Clust.4=pal[4], Clust.5=pal[5]))
+
+
+pheatmap::pheatmap(Diff.curve_matrix[gene.order,],
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_row = KO_CPx_Gene.dynamique %>% dplyr::select(Gene.Clusters),
+                   annotation_colors = anno.colors,
+                   show_colnames = F,
+                   show_rownames = F,
+                   fontsize_row = 8,
+                   border_color = NA,
+                   color =  viridis::viridis(9),
+                   breaks = seq(-2.5,2.5, length.out = 9),
+                   main = "")
+```
+
 # Session Info
 
 ```{r}
