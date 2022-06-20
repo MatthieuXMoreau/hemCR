@@ -810,7 +810,7 @@ pheatmap::pheatmap(Diff.curve_matrix[gene.order[c(235:1,292:236)],
                    main = "")
 ```
 
-# Intersect dynamical genes in CPx and CR in WT and KO
+## Intersect dynamical genes in CPx and CR in WT and KO
 
 ```{r}
 WT.CR <- read.table("../CajalRetzius_trajectory/CR_dynamic_genes.csv", sep = ";", header = T)
@@ -1048,7 +1048,84 @@ heatmap.gene <- pheatmap::pheatmap(Diff.curve_matrix[gene.order,
                        breaks = seq(-2.5,2.5, length.out = 9),
                        main = "WT CR dynamic TFs along GmncWT and KO trajectories")
 ```
+# Which WT CR enriched genes are still expressed in the KO CR
 
+## Find DEG in the KO
+
+```{r cache=TRUE}
+KO.pData <- pData(gbm_cds) %>% subset(Genotype == "Gmnc_KO" & Pseudotime > 0.5)
+
+WT.CR.postGmnc <- read.table("../CajalRetzius_trajectory/CR_dynamic_genes.csv", sep = ";", header = T) 
+WT.CR.postGmnc <- WT.CR.postGmnc %>% filter(Waves %in% c(2,3,4,5)) %>% pull(Gene)
+
+pseudo.maturation.diff <- differentialGeneTest(gbm_cds[WT.CR.postGmnc, KO.pData$Barcode], 
+                                                 fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)*Lineage", 
+                                                 reducedModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
+                                                 cores = parallel::detectCores() - 2)
+
+# Filter genes based on FDR
+pseudo.maturation.diff.filtered <- pseudo.maturation.diff %>% filter(qval < 1e-11)
+```
+
+```{r cache=TRUE}
+# Create a new pseudo-DV vector of 300 points
+nPoints <- 100
+
+new_data = list()
+for (Lineage in unique(KO.pData$Lineage)){
+  new_data[[length(new_data) + 1]] = data.frame(Pseudotime = seq(min(KO.pData$Pseudotime), max(KO.pData$Pseudotime), length.out = nPoints), Lineage=Lineage)
+}
+
+new_data = do.call(rbind, new_data)
+
+# Smooth gene expression
+Diff.curve_matrix <- genSmoothCurves(gbm_cds[as.character(pseudo.maturation.diff.filtered$gene_short_name), KO.pData$Barcode],
+                                      trend_formula = "~sm.ns(Pseudotime, df = 3)*Lineage",
+                                      relative_expr = TRUE,
+                                      new_data = new_data,
+                                      cores= parallel::detectCores() - 2)
+```
+
+## Compute the ABC for each gene
+
+```{r}
+# Extract matrix containing smoothed curves for each lineages
+Pal_curve_matrix <- Diff.curve_matrix[, 1:nPoints] #Pallial points
+CR_curve_matrix <- Diff.curve_matrix[, (nPoints + 1):(2 * nPoints)] #CR points
+
+# Direction of the comparison : postive ABCs <=> Upregulated in CR lineage
+ABCs_res <- CR_curve_matrix - Pal_curve_matrix
+
+# Average logFC between the 2 curves
+ILR_res <- log2(CR_curve_matrix/ (Pal_curve_matrix + 0.1)) 
+  
+ABCs_res <- apply(ABCs_res, 1, function(x, nPoints) {
+                  avg_delta_x <- (x[1:(nPoints - 1)] + x[2:(nPoints)])/2
+                  step <- (100/(nPoints - 1))
+                  res <- round(sum(avg_delta_x * step), 3)
+                  return(res)},
+                  nPoints = nPoints) # Compute the area below the curve
+  
+ABCs_res <- cbind(ABCs_res, ILR_res[,ncol(ILR_res)])
+colnames(ABCs_res)<- c("ABCs", "Endpoint_ILR")
+
+# Import ABC values into the DE test results table
+pseudo.maturation.diff.filtered <- cbind(pseudo.maturation.diff.filtered[,1:4],
+                                         ABCs_res,
+                                         pseudo.maturation.diff.filtered[,5:6])
+```
+
+## Intersect with WT CR and CPx
+
+```{r}
+WT.CPx <- read.table("../ChoroidPlexus_trajectory/ChP.Gene.dynamique.csv", sep = ";", header = T)
+WT.CPx.postGmnc <- WT.CPx  %>% filter(Waves %in% c(1,2)) %>% pull(Gene)
+
+KO.CR.postGmnc <- pseudo.maturation.diff.filtered %>% filter(ABCs >20) %>% pull(gene_short_name)
+
+gene.list <- list(WT.CR.postGmnc = WT.CR.postGmnc, KO.CR.postGmnc = KO.CR.postGmnc, WT.CPx.postGmnc = WT.CPx.postGmnc)
+ggvenn::ggvenn(gene.list)
+```
 
 # Session Info
 
