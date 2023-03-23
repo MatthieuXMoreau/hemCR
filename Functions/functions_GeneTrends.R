@@ -6,7 +6,7 @@ trend <- function(Seurat.data,
                   group.by,
                   gene){
   
-  data <- Seurat.data@meta.data %>% select(Lineage, Pseudotime, orig.ident)
+  data <- Seurat.data@meta.data %>% select(Lineage, Pseudotime, orig.ident, Phase)
   data$Gene <- Seurat.data@assays$RNA@data[gene,]
   
   if (group.by == "Lineage") {
