@@ -683,6 +683,7 @@ pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_
                                                  reducedModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
                                                  cores = parallel::detectCores() - 2)
 
+write.table(pseudo.maturation.diff, "CR_dynamic_genes_unfiltered.csv", sep = ";", quote = F, row.names = F)
 ```
 
 ```{r}
