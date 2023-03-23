@@ -1,0 +1,191 @@
+---
+title: "Gmnc EP bulk RNAseq intersection"
+author:
+   - Matthieu Moreau^[Institute of Psychiatry and Neuroscience of Paris, INSERM U1266, 75014, Paris, France, matthieu.moreau@inserm.fr] [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2592-2373)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    code_download: yes
+    df_print: paged
+    highlight: haddock
+    theme: cosmo
+    css: "../style.css"
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center', message=FALSE, warning=FALSE, cache.lazy = FALSE)
+
+# To use biomart 
+new_config <- httr::config(ssl_verifypeer = FALSE)
+httr::set_config(new_config, override = FALSE)
+```
+
+# Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(Seurat)
+library(princurve)
+library(monocle)
+library(gprofiler2)
+library(seriation)
+library(Matrix)
+library(dplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(wesanderson)
+library(reshape2)
+library(UpSetR)
+library(gprofiler2)
+
+#Set ggplot theme as classic
+theme_set(theme_classic())
+```
+
+# Load dynamic genes lists
+
+```{r}
+GmncEP <- read.table("~/Bureau/GemC1_vs_H2B-GFP.csv", sep = ",", header = T)
+GmncEP$Gene <- ifelse(GmncEP$Gene == "Deup1", "Ccdc67",GmncEP$Gene)
+CR_trajectory <- read.table("CajalRetzius_trajectory/CR_dynamic_genes_unfiltered.csv", sep = ";", header = T)
+ChP_trajectory <- read.table("ChoroidPlexus_trajectory/ChP.Gene.dynamique_unfiltered.csv", sep = ";", header = T)
+```
+
+# Plot bulk RNAseq volcano plot
+
+```{r}
+#Set a new data frame which will store all variable needed to generate the volcano plot
+Vplot.data <- data.frame(gene = as.character(GmncEP$Gene),
+                         padj = GmncEP$padj, 
+                         Log2FC = GmncEP$log2foldchange)
+
+# Remove any rows that have NA 
+Vplot.data <- na.omit(Vplot.data)
+
+# Mark the genes which are significantly upreagalted or down regulated by an absolute logFC > 2
+nUP <- as.numeric(table(Vplot.data$Log2FC > 1 & Vplot.data$padj < 0.01)[2])
+nDown <- table(Vplot.data$Log2FC < -1 & Vplot.data$padj < 0.01)[2]
+
+Vplot.data <- mutate(Vplot.data, color = case_when(Vplot.data$Log2FC > 1 & Vplot.data$padj < 0.01 ~ "Gmnc induced (LogFc > 1)",
+                                                   Vplot.data$Log2FC < -1 & Vplot.data$padj < 0.01 ~ "LogFc < 1",
+                                                   Vplot.data$padj > 0.05 | abs(Vplot.data$Log2FC) < 1 ~ "NS"))
+
+ggplot(Vplot.data, aes(x = Log2FC, y = -log10(padj), color = color)) + # Set the default plot
+  geom_point(size = 1, alpha = 0.8, na.rm = T) + # Set the dot size
+  scale_color_manual(name = "Expression change",
+                     values = c("Gmnc induced (LogFc > 1)" = "#CD4F39",
+                                "LogFc < 1" ="#008B00" ,
+                                "NS" = "darkgray")) +
+  geom_hline(yintercept = 1.3, colour = "red") + #  p-adj value cutoff
+  geom_vline(xintercept = c(-1,1), colour = "red") + # Log2FC value cutoff
+  xlab(expression(log[2]("Fold change"))) + ylab(expression(-log[10]("adjusted p-value"))) +
+  ggtitle(label = "GemC1 vs H2B-GFP", subtitle = paste(nUP,"LogFc > 1", "genes\n",nDown,"LogFc < 1", "genes"))
+```
+
+# Upset plot
+
+```{r}
+GmncEP.up <- GmncEP %>% filter(log2foldchange > 1 & padj < 0.01) 
+
+CR_trajectory <- CR_trajectory %>% filter(qval < 1e-10)
+ChP_trajectory <- ChP_trajectory %>% filter(qval < 5e-3)
+```
+
+
+```{r}
+listInput <- list(CR= CR_trajectory$gene_short_name, CPx= ChP_trajectory$gene_short_name, GmncEP.up= GmncEP.up$Gene)
+
+upset(fromList(listInput),
+      order.by = "freq",
+      queries = list(list(query = intersects, params = list("CR", "CPx"), color = "orange", active = T),
+                     list(query = intersects, params = list("CR", "CPx", "GmncEP.up"), color = "red", active = T),
+                     list(query = intersects, params = list("CPx", "GmncEP.up"), color = "green", active = T),
+                     list(query = intersects, params = list("CR", "GmncEP.up"), color = "blue", active = T)))
+```
+
+# Intersect list
+
+## Green intersect
+
+```{r}
+CPx_GmncEP.up <- intersect(ChP_trajectory$gene_short_name, GmncEP.up$Gene)
+
+CPx_GmncEP.up[!CPx_GmncEP.up %in% CR_trajectory$gene_short_name]
+```
+
+```{r}
+ChP.gostres <- gost(query = CPx_GmncEP.up[!CPx_GmncEP.up %in% CR_trajectory$gene_short_name],
+                organism = "mmusculus", ordered_query = F, 
+                multi_query = F, significant = T, exclude_iea = T, 
+                measure_underrepresentation = F, evcodes = T, 
+                user_threshold = 0.05, correction_method = "fdr", 
+                domain_scope = "annotated", custom_bg = NULL, 
+                numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+
+View(ChP.gostres$result)
+```
+
+
+## Red intersect
+
+```{r}
+CPx_GmncEP.up[CPx_GmncEP.up %in% CR_trajectory$gene_short_name]
+```
+
+```{r}
+ChP.gostres <- gost(query = CPx_GmncEP.up[CPx_GmncEP.up %in% CR_trajectory$gene_short_name],
+                organism = "mmusculus", ordered_query = F, 
+                multi_query = F, significant = T, exclude_iea = T, 
+                measure_underrepresentation = F, evcodes = T, 
+                user_threshold = 0.05, correction_method = "fdr", 
+                domain_scope = "annotated", custom_bg = NULL, 
+                numeric_ns = "", sources = c("GO:MF", "GO:BP"), as_short_link = F)
+
+View(ChP.gostres$result)
+```
+
+
+## Plot scores
+
+```{r}
+WT <- readRDS("QC.filtered.clustered.cells.RDS")
+
+
+WT <- AddModuleScore(WT ,
+                     features = list(genes = CPx_GmncEP.up[!CPx_GmncEP.up %in% CR_trajectory$gene_short_name]),
+                     name = "Green_intersect")
+
+
+
+WT <- AddModuleScore(WT,
+                     features = list(genes = CPx_GmncEP.up[CPx_GmncEP.up %in% CR_trajectory$gene_short_name]),
+                     name = "Red_intersect")
+
+FeaturePlot(object = WT ,
+                  features = c("Red_intersect1","Green_intersect1"),
+                  pt.size = 1,
+                  cols = rev(brewer.pal(10,"Spectral")),
+                  reduction = "spring",
+                  order = T) & NoAxes()
+```
+
+
+## Blue intersect
+
+```{r}
+CR_GmncEP.up <- intersect(CR_trajectory$gene_short_name, GmncEP.up$Gene)
+
+CR_GmncEP.up[!CR_GmncEP.up %in% ChP_trajectory$gene_short_name]
+```
+
+# Only in Gmnc EP
+
+```{r}
+GmncEP.up$Gene[!GmncEP.up$Gene %in% c(CR_trajectory$gene_short_name, ChP_trajectory$gene_short_name)]
+```
+
