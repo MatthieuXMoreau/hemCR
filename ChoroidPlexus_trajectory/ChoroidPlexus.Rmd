@@ -179,12 +179,12 @@ FeaturePlot(object = ChP.data,
 # Subset progenitors and fit cell cycle axis
 
 ```{r}
-Prog.data <-  subset(ChP.data, idents = c("ChP_progenitors"))
+Prog.data <-  subset(ChP.data, idents = c("ChP_progenitors", "ChP"))
 
 DimPlot(Prog.data,
         reduction = "spring",
         pt.size = 1,
-        cols =  c("#009fda")) + NoAxes()
+        cols =  c("#83c3b8", "#009fda")) + NoAxes()
 ```
 
 ```{r}
@@ -238,7 +238,7 @@ The `getCellCyclePhaseAssignInformation` filter "outlier" cells for cell cycle p
 ```{r cache=TRUE}
 source("../Functions/functions_InitializationCCPhaseAssignFiltering.R")
 
-myData <- getCellCyclePhaseAssign_allcells(myData)
+myData <- getCellCyclePhaseAssignInformation(myData)
 ```
 
 ```{r cache=TRUE}
@@ -258,8 +258,7 @@ gc()
 CellCycledata <- cbind(as.data.frame(t(myData@transformedData$dc$data[1:2,])),
                        nUMI= myData@cellInfo$nUMI,
                        Revelio.phase = factor(myData@cellInfo$ccPhase, levels = c("G1.S", "S", "G2", "G2.M", "M.G1")),
-                       Revelio.cc= myData@cellInfo$ccPercentageUniformlySpaced,
-                       Seurat.cc= Prog.data@meta.data[myData@cellInfo$cellID,"CC.Difference"])
+                       Revelio.cc= myData@cellInfo$ccPercentageUniformlySpaced)
 ```
 
 
@@ -297,6 +296,9 @@ ggplot(CellCycledata, aes(x= Revelio.cc, y= nUMI/10000)) +
 ## Import coordinates
 
 ```{r}
+Prog.data <- subset(Prog.data,
+                    subset = Barcodes %in% rownames(CellCycledata))
+
 Prog.data$Revelio.DC1 <- CellCycledata$DC1
 Prog.data$Revelio.DC2 <- CellCycledata$DC2
 
@@ -320,12 +322,19 @@ p2 <- DimPlot(object = Prog.data,
 
 p3 <- FeaturePlot(object = Prog.data,
             features = "Pseudotime",
-            pt.size = 2,
+            pt.size = 1,
             cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
             reduction = "spring",
             order = T) & NoAxes()
 
-p1 + p2 + p3 
+p4 <-FeaturePlot(object = Prog.data,
+            features = c("Gmnc"),
+            pt.size = 1,
+            cols = c("grey90", brewer.pal(9,"YlGnBu")),
+            reduction = "spring",
+            order = T) & NoAxes() & NoLegend()
+
+p1 + p2 + p3 + p4  + patchwork::plot_layout(ncol = 2)
 ```
 
 ```{r}
@@ -363,26 +372,16 @@ p1 + p2 + p3 + p4  + patchwork::plot_layout(ncol = 2)
 ```
 
 ```{r}
-rm(list = ls()[!ls() %in% c("Trajectories.progenitors", "ChP.data")])
+rm(list = ls()[!ls() %in% c("Prog.data")])
 gc()
 ```
 
 Import progenitors cycling coordinates in the full dataset
 
-```{r}
-ChP.data$Cycling.axis <- sapply(ChP.data$Barcodes,
-                              FUN = function(x) {
-                                if (x %in% Trajectories.progenitors$Barcodes) {
-                                  x = Trajectories.progenitors[x, "Cycling.axis"]
-                                } else {
-                                  x = NA
-                                  }
-                              })
-```
 
 ```{r}
-FeaturePlot(object = ChP.data,
-            features = "Pseudotime",
+FeaturePlot(object = Prog.data,
+            features = c("Pseudotime", "Revelio.cc"),
             pt.size = 2,
             cols = rev(colorRampPalette(brewer.pal(n =10, name = "Spectral"))(100)),
             reduction = "spring",
@@ -396,22 +395,22 @@ FeaturePlot(object = ChP.data,
 
 ```{r}
 # Transfer metadata
-meta.data <- data.frame(Barcode= ChP.data$Barcodes,
-                        Pseudotime= ChP.data$Pseudotime,
-                        Cell.cycle= ChP.data$Phase)
+meta.data <- data.frame(Barcode= Prog.data$Barcodes,
+                        Pseudotime= Prog.data$Pseudotime,
+                        Cell.cycle= Prog.data$Revelio.cc)
 
 Annot.data  <- new('AnnotatedDataFrame', data = meta.data)
 
 # Transfer counts data
-ChP.data <- FindVariableFeatures(ChP.data, selection.method = "vst", nfeatures = 2000)
-var.genes <- VariableFeatures(ChP.data)
-count.data = data.frame(gene_short_name = rownames(ChP.data[["RNA"]]@data[var.genes,]),
-                        row.names = rownames(ChP.data[["RNA"]]@data[var.genes,]))
+Prog.data <- FindVariableFeatures(Prog.data, selection.method = "vst", nfeatures = 2000)
+var.genes <- VariableFeatures(Prog.data)
+count.data = data.frame(gene_short_name = rownames(Prog.data[["RNA"]]@data[var.genes,]),
+                        row.names = rownames(Prog.data[["RNA"]]@data[var.genes,]))
 
 feature.data <- new('AnnotatedDataFrame', data = count.data)
 
 # Create the CellDataSet object including variable genes only
-gbm_cds <- newCellDataSet(ChP.data[["RNA"]]@counts[var.genes,],
+gbm_cds <- newCellDataSet(Prog.data[["RNA"]]@counts[var.genes,],
                           phenoData = Annot.data,
                           featureData = feature.data,
                           lowerDetectionLimit = 0,
@@ -425,14 +424,14 @@ gbm_cds <- detectGenes(gbm_cds, min_expr = 0.1)
 ```
 
 ```{r}
-rm(list = ls()[!ls() %in% c("ChP.data", "gbm_cds")])
+rm(list = ls()[!ls() %in% c("Prog.data", "gbm_cds")])
 gc()
 ```
 
 ## Test each gene trend over pseudotime score
 
 ```{r cache=TRUE}
-pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed >= 30,], 
+pseudo.maturation.diff <- differentialGeneTest(gbm_cds[fData(gbm_cds)$num_cells_expressed >= 10,], 
                                                  fullModelFormulaStr = "~sm.ns(Pseudotime, df = 3)", 
                                                  reducedModelFormulaStr = "~1", 
                                                  cores = parallel::detectCores() - 2)
@@ -462,7 +461,7 @@ Smooth.curve.matrix <- genSmoothCurves(gbm_cds[as.character(pseudo.maturation.di
 
 ```{r}
 ## Cluster gene by expression profiles
-Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Smooth.curve.matrix),method = "pearson"))), k= 4)
+Pseudotime.genes.clusters <- cluster::pam(as.dist((1 - cor(Matrix::t(Smooth.curve.matrix),method = "pearson"))), k= 5)
 
 ChP.Gene.dynamique <- data.frame(Gene= names(Pseudotime.genes.clusters$clustering),
                                  Waves= Pseudotime.genes.clusters$clustering,
@@ -476,7 +475,7 @@ ChP.Gene.dynamique$Gene.Clusters <- paste0("Clust.", ChP.Gene.dynamique$Gene.Clu
 
 ```{r}
 # Order the rows using seriation
-dst <- as.dist((1-cor(scale(t(Smooth.curve.matrix)), method = "spearman")))
+dst <- as.dist((1-cor(scale(t(Smooth.curve.matrix)), method = "pearson")))
 row.ser <- seriation::seriate(dst, method ="R2E") #"R2E" #TSP #"GW" "GW_ward"
 gene.order <- rownames(Smooth.curve.matrix[seriation::get_order(row.ser),])
 
